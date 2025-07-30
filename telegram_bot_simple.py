@@ -152,20 +152,8 @@ def handle_message(update):
         
         logger.info(f"Received message from user {user.get('first_name', 'Unknown')} (ID: {user_id}): {text}")
         
-        # Handle /start command for all users
-        if text.strip() == '/start':
-            logger.info(f"Handling /start command for user {user_id}")
-            result = send_message(chat_id, KHMER_MESSAGE, reply_markup=COUPON_KEYBOARD)
-            if result and result.get('ok'):
-                logger.info(f"Successfully sent Khmer message to user {user_id}")
-            else:
-                logger.error(f"Failed to send message to user {user_id}")
-            return
-        
-        # Handle keyboard button press for all users
-        if text.strip() == 'គូប៉ុង E-GetS':
-            logger.info(f"User {user_id} pressed the coupon keyboard button")
-            
+        # Function to show account selection interface
+        def show_account_selection():
             # Create inline buttons for available account types
             inline_buttons = []
             for account_type, accounts in accounts_data['account_types'].items():
@@ -182,16 +170,20 @@ def handle_message(update):
             # Create inline keyboard markup
             inline_keyboard = {'inline_keyboard': inline_buttons}
             
-            # Send message with inline buttons - different message for keyboard action
-            purchase_message = "សូមជ្រើសរើសប្រភេទ Account ដែលអ្នកចង់ទិញ"
+            # Send message with inline buttons
+            purchase_message = "សូមជ្រើសរើស Account ដើម្បីទិញ៖"
             send_message(chat_id, purchase_message, reply_markup=inline_keyboard)
+        
+        # Handle /start command, keyboard button, and invalid commands for all users
+        if text.strip() == '/start' or text.strip() == 'គូប៉ុង E-GetS':
+            logger.info(f"User {user_id} triggered account selection interface")
+            show_account_selection()
             return
         
-        # Handle non-admin users with unrecognized commands
+        # Handle non-admin users with unrecognized commands - show same interface
         if user_id != ADMIN_ID:
-            # Only respond to /start and keyboard button for non-admin users
-            # All other messages are ignored
-            send_message(chat_id, "ការចុចពាក្យបញ្ជាមិនត្រឹមត្រូវ", reply_markup=COUPON_KEYBOARD)
+            logger.info(f"Non-admin user {user_id} sent unrecognized command, showing account selection")
+            show_account_selection()
             return
         
         # Admin-only commands
