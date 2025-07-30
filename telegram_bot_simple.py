@@ -223,7 +223,7 @@ def handle_message(update):
                         # Clear session
                         del user_sessions[user_id]
                         
-                        # Send confirmation
+                        # Send confirmation without keyboard
                         send_message(chat_id, f"*✅ បានបញ្ចូល Account ដោយជោគជ័យ*\n\n```\n🔹 ចំនួន: {count}\n\n🔹 ប្រភេទ: {account_type}\n\n🔹 តម្លៃ: {price}$\n```", reply_to_message_id=message_id, parse_mode="Markdown")
                         
                         logger.info(f"Admin {user_id} added {count} accounts of type {account_type} with price ${price}")
