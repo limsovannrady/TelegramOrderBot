@@ -152,7 +152,7 @@ def handle_message(update):
             # Create inline keyboard markup
             inline_keyboard = {'inline_keyboard': inline_buttons}
             
-            # Send message with inline buttons
+            # Send message with inline buttons - keyboard will persist from previous messages
             purchase_message = "សូមជ្រើសរើស Account ដើម្បីទិញ៖"
             send_message(chat_id, purchase_message, reply_markup=inline_keyboard)
         
@@ -173,7 +173,7 @@ def handle_message(update):
             # Handle /add_account command
             if text.strip() == '/add_account':
                 user_sessions[user_id] = {'state': 'waiting_for_accounts'}
-                send_message(chat_id, "*បញ្ចូល Account សម្រាប់លក់តាមទម្រង់៖*\n\n```\nលេខទូរសព្ទ | ពាក្យសម្ងាត់\n```", reply_to_message_id=message_id, parse_mode="Markdown")
+                send_message(chat_id, "*បញ្ចូល Account សម្រាប់លក់តាមទម្រង់៖*\n\n```\nលេខទូរសព្ទ | ពាក្យសម្ងាត់\n```", reply_to_message_id=message_id, parse_mode="Markdown", reply_markup=COUPON_KEYBOARD)
                 return
             
             # Check if user is in a session
@@ -196,15 +196,15 @@ def handle_message(update):
                         session['accounts'] = accounts
                         session['state'] = 'waiting_for_account_type'
                         count = len(accounts)
-                        send_message(chat_id, f"*បានបញ្ចូល Account ចំនួន {count}\n\nសូមបញ្ចូលប្រភេទ Account៖*", reply_to_message_id=message_id, parse_mode="Markdown")
+                        send_message(chat_id, f"*បានបញ្ចូល Account ចំនួន {count}\n\nសូមបញ្ចូលប្រភេទ Account៖*", reply_to_message_id=message_id, parse_mode="Markdown", reply_markup=COUPON_KEYBOARD)
                     else:
-                        send_message(chat_id, "*សូមបញ្ចូលតាមទម្រង់៖*\n\n```\nលេខទូរសព្ទ | ពាក្យសម្ងាត់\n```", reply_to_message_id=message_id, parse_mode="Markdown")
+                        send_message(chat_id, "*សូមបញ្ចូលតាមទម្រង់៖*\n\n```\nលេខទូរសព្ទ | ពាក្យសម្ងាត់\n```", reply_to_message_id=message_id, parse_mode="Markdown", reply_markup=COUPON_KEYBOARD)
                     return
                 
                 elif session['state'] == 'waiting_for_account_type':
                     session['account_type'] = text.strip()
                     session['state'] = 'waiting_for_price'
-                    send_message(chat_id, f"*សូមដាក់តម្លៃក្នុងប្រភេទ Account {text.strip()}*", reply_to_message_id=message_id, parse_mode="Markdown")
+                    send_message(chat_id, f"*សូមដាក់តម្លៃក្នុងប្រភេទ Account {text.strip()}*", reply_to_message_id=message_id, parse_mode="Markdown", reply_markup=COUPON_KEYBOARD)
                     return
                 
                 elif session['state'] == 'waiting_for_price':
@@ -229,7 +229,7 @@ def handle_message(update):
                         logger.info(f"Admin {user_id} added {count} accounts of type {account_type} with price ${price}")
                         
                     except ValueError:
-                        send_message(chat_id, "តម្លៃមិនត្រឹមត្រូវ។ សូមបញ្ចូលតម្លៃជាលេខ (ឧទាហរណ៍: 5.99)", reply_to_message_id=message_id)
+                        send_message(chat_id, "តម្លៃមិនត្រឹមត្រូវ។ សូមបញ្ចូលតម្លៃជាលេខ (ឧទាហរណ៍: 5.99)", reply_to_message_id=message_id, reply_markup=COUPON_KEYBOARD)
                     return
             
             # If admin sent a message but it's not a recognized command or part of workflow
