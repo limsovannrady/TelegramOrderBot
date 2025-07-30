@@ -182,8 +182,9 @@ def handle_message(update):
             # Create inline keyboard markup
             inline_keyboard = {'inline_keyboard': inline_buttons}
             
-            # Send message with inline buttons
-            send_message(chat_id, KHMER_MESSAGE, reply_markup=inline_keyboard)
+            # Send message with inline buttons - different message for keyboard action
+            purchase_message = "សូមជ្រើសរើសប្រភេទ Account ដែលអ្នកចង់ទិញ"
+            send_message(chat_id, purchase_message, reply_markup=inline_keyboard)
             return
         
         # Admin-only commands
