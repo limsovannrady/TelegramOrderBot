@@ -35,13 +35,16 @@ accounts_data = {
     'prices': {}
 }
 
-def send_message(chat_id, text):
+def send_message(chat_id, text, reply_to_message_id=None):
     """Send a message to a specific chat."""
     url = f"{API_URL}/sendMessage"
     data = {
         'chat_id': chat_id,
         'text': text
     }
+    
+    if reply_to_message_id:
+        data['reply_to_message_id'] = reply_to_message_id
     
     try:
         response = requests.post(url, data=data, timeout=10)
@@ -78,6 +81,7 @@ def handle_message(update):
             return
         
         chat_id = message['chat']['id']
+        message_id = message.get('message_id')
         text = message.get('text', '')
         user = message.get('from', {})
         user_id = user.get('id')
@@ -99,7 +103,7 @@ def handle_message(update):
             # Handle /add_account command
             if text.strip() == '/add_account':
                 user_sessions[user_id] = {'state': 'waiting_for_accounts'}
-                send_message(chat_id, "បញ្ចូល Account សម្រាប់លក់តាមទម្រង់៖\n\nលេខទូរសព្ទ | ពាក្យសម្ងាត់")
+                send_message(chat_id, "បញ្ចូល Account សម្រាប់លក់តាមទម្រង់៖\n\nលេខទូរសព្ទ | ពាក្យសម្ងាត់", reply_to_message_id=message_id)
                 return
             
             # Check if user is in a session
@@ -122,15 +126,15 @@ def handle_message(update):
                         session['accounts'] = accounts
                         session['state'] = 'waiting_for_account_type'
                         count = len(accounts)
-                        send_message(chat_id, f"បានបញ្ចូល Account ចំនួន {count}\n\nសូមបញ្ចូលប្រភេទ Account៖")
+                        send_message(chat_id, f"បានបញ្ចូល Account ចំនួន {count}\n\nសូមបញ្ចូលប្រភេទ Account៖", reply_to_message_id=message_id)
                     else:
-                        send_message(chat_id, "មិនអាចយល់ពីទម្រង់ទិន្នន័យ។ សូមបញ្ចូលតាមទម្រង់៖ លេខទូរសព្ទ | ពាក្យសម្ងាត់")
+                        send_message(chat_id, "មិនអាចយល់ពីទម្រង់ទិន្នន័យ។ សូមបញ្ចូលតាមទម្រង់៖ លេខទូរសព្ទ | ពាក្យសម្ងាត់", reply_to_message_id=message_id)
                     return
                 
                 elif session['state'] == 'waiting_for_account_type':
                     session['account_type'] = text.strip()
                     session['state'] = 'waiting_for_price'
-                    send_message(chat_id, f"សូមដាក់តម្លៃក្នុងប្រភេទ Account {text.strip()}")
+                    send_message(chat_id, f"សូមដាក់តម្លៃក្នុងប្រភេទ Account {text.strip()}", reply_to_message_id=message_id)
                     return
                 
                 elif session['state'] == 'waiting_for_price':
@@ -150,12 +154,12 @@ def handle_message(update):
                         del user_sessions[user_id]
                         
                         # Send confirmation
-                        send_message(chat_id, f"✅ បញ្ចូលគណនី {count} ប្រភេទ Account {account_type} ជាមួយតម្លៃ {price}$ ក្នុងមួយគណនី។")
+                        send_message(chat_id, f"✅ បញ្ចូលគណនី {count} ប្រភេទ Account {account_type} ជាមួយតម្លៃ {price}$ ក្នុងមួយគណនី។", reply_to_message_id=message_id)
                         
                         logger.info(f"Admin {user_id} added {count} accounts of type {account_type} with price ${price}")
                         
                     except ValueError:
-                        send_message(chat_id, "តម្លៃមិនត្រឹមត្រូវ។ សូមបញ្ចូលតម្លៃជាលេខ (ឧទាហរណ៍: 5.99)")
+                        send_message(chat_id, "តម្លៃមិនត្រឹមត្រូវ។ សូមបញ្ចូលតម្លៃជាលេខ (ឧទាហរណ៍: 5.99)", reply_to_message_id=message_id)
                     return
         
         # If not admin or not recognized command, ignore
