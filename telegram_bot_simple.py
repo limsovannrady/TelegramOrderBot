@@ -124,8 +124,6 @@ def handle_callback_query(update):
                     send_message(chat_id, reply_message, reply_to_message_id=original_message_id, parse_mode="Markdown", reply_markup=COUPON_KEYBOARD)
                 else:
                     send_message(chat_id, f"សុំទោស! Account {account_type} អស់ស្តុកហើយ។", reply_markup=COUPON_KEYBOARD)
-            else:
-                send_message(chat_id, "Account ដែលអ្នកជ្រើសរើសមិនមានទេ។", reply_markup=COUPON_KEYBOARD)
             
         # Answer callback query to remove loading state
         answer_url = f"{API_URL}/answerCallbackQuery"
