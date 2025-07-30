@@ -157,7 +157,7 @@ def handle_message(update):
                         del user_sessions[user_id]
                         
                         # Send confirmation
-                        send_message(chat_id, f"✅ បញ្ចូលគណនី {count} ប្រភេទ Account {account_type} ជាមួយតម្លៃ {price}$ ក្នុងមួយគណនី។", reply_to_message_id=message_id)
+                        send_message(chat_id, f"*✅ បានបញ្ចូល Account ដោយជោគជ័យ*\n\n```\n🔹 ចំនួន: {count}\n\n🔹 ប្រភេទ: {account_type}\n\n🔹 តម្លៃ: {price}$\n```", reply_to_message_id=message_id, parse_mode="Markdown")
                         
                         logger.info(f"Admin {user_id} added {count} accounts of type {account_type} with price ${price}")
                         
