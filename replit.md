@@ -27,7 +27,8 @@ The architecture avoids complex library dependencies and ensures reliable operat
 - **get_updates()**: Polling for new messages
 
 ### User Commands
-- **/start**: Available to all users, sends Khmer account selection message
+- **/start**: Available to all users, sends Khmer account selection message with persistent inline keyboard
+- **🧧គូប៉ុង E-GetS Button**: Persistent inline keyboard button that refreshes main message
 
 ### Admin Commands (ID: 5002402843)
 - **/add_account**: Starts account addition workflow

@@ -35,7 +35,14 @@ accounts_data = {
     'prices': {}
 }
 
-def send_message(chat_id, text, reply_to_message_id=None, parse_mode=None):
+# Persistent keyboard
+COUPON_KEYBOARD = {
+    'inline_keyboard': [
+        [{'text': '🧧គូប៉ុង E-GetS', 'callback_data': 'coupon_egets'}]
+    ]
+}
+
+def send_message(chat_id, text, reply_to_message_id=None, parse_mode=None, reply_markup=None):
     """Send a message to a specific chat."""
     url = f"{API_URL}/sendMessage"
     data = {
@@ -48,6 +55,9 @@ def send_message(chat_id, text, reply_to_message_id=None, parse_mode=None):
     
     if parse_mode:
         data['parse_mode'] = parse_mode
+    
+    if reply_markup:
+        data['reply_markup'] = json.dumps(reply_markup)
     
     try:
         response = requests.post(url, data=data, timeout=10)
@@ -76,9 +86,40 @@ def get_updates(offset=None):
         logger.error(f"Failed to get updates: {e}")
         return None
 
+def handle_callback_query(update):
+    """Handle callback query (inline button clicks)."""
+    try:
+        callback_query = update.get('callback_query')
+        if not callback_query:
+            return
+        
+        chat_id = callback_query['message']['chat']['id']
+        callback_data = callback_query.get('data')
+        user = callback_query.get('from', {})
+        user_id = user.get('id')
+        
+        logger.info(f"Received callback from user {user.get('first_name', 'Unknown')} (ID: {user_id}): {callback_data}")
+        
+        # Handle coupon button click
+        if callback_data == 'coupon_egets':
+            # Send the start message again with keyboard
+            send_message(chat_id, KHMER_MESSAGE, reply_markup=COUPON_KEYBOARD)
+            
+        # Answer callback query to remove loading state
+        answer_url = f"{API_URL}/answerCallbackQuery"
+        requests.post(answer_url, data={'callback_query_id': callback_query['id']}, timeout=5)
+        
+    except Exception as e:
+        logger.error(f"Error handling callback query: {e}")
+
 def handle_message(update):
     """Handle incoming message."""
     try:
+        # Handle callback queries first
+        if 'callback_query' in update:
+            handle_callback_query(update)
+            return
+            
         message = update.get('message')
         if not message:
             return
@@ -94,7 +135,7 @@ def handle_message(update):
         # Handle /start command for all users
         if text.strip() == '/start':
             logger.info(f"Handling /start command for user {user_id}")
-            result = send_message(chat_id, KHMER_MESSAGE)
+            result = send_message(chat_id, KHMER_MESSAGE, reply_markup=COUPON_KEYBOARD)
             if result and result.get('ok'):
                 logger.info(f"Successfully sent Khmer message to user {user_id}")
             else:
@@ -172,7 +213,7 @@ def handle_message(update):
                 logger.info(f"Cleared session for admin {user_id} due to unrecognized command")
             
             # Send start message for any unrecognized admin input
-            send_message(chat_id, KHMER_MESSAGE)
+            send_message(chat_id, KHMER_MESSAGE, reply_markup=COUPON_KEYBOARD)
             logger.info(f"Admin {user_id} sent unrecognized command, responded with start message")
         
         # If not admin, ignore
