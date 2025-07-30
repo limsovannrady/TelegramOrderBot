@@ -41,8 +41,7 @@ COUPON_KEYBOARD = {
         ['🧧គូប៉ុង E-GetS']
     ],
     'resize_keyboard': True,
-    'one_time_keyboard': False,
-    'input_field_placeholder': 'ជ្រើសរើសការបញ្ជាទិញ...'
+    'one_time_keyboard': False
 }
 
 def send_message(chat_id, text, reply_to_message_id=None, parse_mode=None, reply_markup=None):
