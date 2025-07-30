@@ -89,10 +89,48 @@ def get_updates(offset=None):
         return None
 
 def handle_callback_query(update):
-    """Handle callback query (inline button clicks) - Not used with regular keyboards."""
-    # This function is kept for future inline keyboard features
-    # Regular keyboards don't generate callback queries
-    pass
+    """Handle callback query (inline button clicks)."""
+    try:
+        callback_query = update.get('callback_query')
+        if not callback_query:
+            return
+        
+        chat_id = callback_query['message']['chat']['id']
+        callback_data = callback_query.get('data')
+        user = callback_query.get('from', {})
+        user_id = user.get('id')
+        
+        logger.info(f"Received callback from user {user.get('first_name', 'Unknown')} (ID: {user_id}): {callback_data}")
+        
+        # Handle buy button clicks
+        if callback_data.startswith('buy_'):
+            account_type = callback_data.replace('buy_', '')
+            
+            # Check if account type exists and has stock
+            if account_type in accounts_data['account_types']:
+                accounts = accounts_data['account_types'][account_type]
+                count = len(accounts)
+                price = accounts_data['prices'].get(account_type, 0)
+                
+                if count > 0:
+                    # Show account details
+                    message = f"*ព័ត៌មាន Account {account_type}*\n\n"
+                    message += f"🔹 មានក្នុងស្តុក: {count}\n"
+                    message += f"🔹 តម្លៃ: ${price}\n\n"
+                    message += "សូមទាក់ទងអ្នកគ្រប់គ្រងដើម្បីបញ្ជាទិញ"
+                    
+                    send_message(chat_id, message, parse_mode="Markdown", reply_markup=COUPON_KEYBOARD)
+                else:
+                    send_message(chat_id, f"សុំទោស! Account {account_type} អស់ស្តុកហើយ។", reply_markup=COUPON_KEYBOARD)
+            else:
+                send_message(chat_id, "Account ដែលអ្នកជ្រើសរើសមិនមានទេ។", reply_markup=COUPON_KEYBOARD)
+            
+        # Answer callback query to remove loading state
+        answer_url = f"{API_URL}/answerCallbackQuery"
+        requests.post(answer_url, data={'callback_query_id': callback_query['id']}, timeout=5)
+        
+    except Exception as e:
+        logger.error(f"Error handling callback query: {e}")
 
 def handle_message(update):
     """Handle incoming message."""
@@ -127,8 +165,25 @@ def handle_message(update):
         # Handle keyboard button press for all users
         if text.strip() == 'គូប៉ុង E-GetS':
             logger.info(f"User {user_id} pressed the coupon keyboard button")
-            # Send the start message again with keyboard
-            send_message(chat_id, KHMER_MESSAGE, reply_markup=COUPON_KEYBOARD)
+            
+            # Create inline buttons for available account types
+            inline_buttons = []
+            for account_type, accounts in accounts_data['account_types'].items():
+                count = len(accounts)
+                button_text = f"ទិញ {account_type} - មានក្នុងស្តុក {count}"
+                callback_data = f"buy_{account_type}"
+                inline_buttons.append([{'text': button_text, 'callback_data': callback_data}])
+            
+            # If no accounts available, show a message
+            if not inline_buttons:
+                send_message(chat_id, "បច្ចុប្បន្នមិនមាន Account ក្នុងស្តុកទេ។", reply_markup=COUPON_KEYBOARD)
+                return
+            
+            # Create inline keyboard markup
+            inline_keyboard = {'inline_keyboard': inline_buttons}
+            
+            # Send message with inline buttons
+            send_message(chat_id, KHMER_MESSAGE, reply_markup=inline_keyboard)
             return
         
         # Admin-only commands
