@@ -120,17 +120,20 @@ def handle_callback_query(update):
                     
                     send_message(chat_id, reply_message, parse_mode="Markdown", reply_markup=COUPON_KEYBOARD)
                     
-                    # Remove inline buttons from the original message
-                    original_message_id = callback_query['message']['message_id']
-                    original_text = callback_query['message']['text']
-                    edit_url = f"{API_URL}/editMessageText"
-                    edit_data = {
-                        'chat_id': chat_id,
-                        'message_id': original_message_id,
-                        'text': original_text,
-                        'reply_markup': json.dumps({'inline_keyboard': []})
-                    }
-                    requests.post(edit_url, data=edit_data, timeout=5)
+                    # Wait 1 second then delete the original message with inline buttons
+                    import threading
+                    def delete_original_message():
+                        time.sleep(1)
+                        original_message_id = callback_query['message']['message_id']
+                        delete_url = f"{API_URL}/deleteMessage"
+                        delete_data = {
+                            'chat_id': chat_id,
+                            'message_id': original_message_id
+                        }
+                        requests.post(delete_url, data=delete_data, timeout=5)
+                    
+                    # Run deletion in background thread
+                    threading.Thread(target=delete_original_message).start()
                 else:
                     send_message(chat_id, f"សុំទោស! Account {account_type} អស់ស្តុកហើយ។", reply_markup=COUPON_KEYBOARD)
             
