@@ -187,6 +187,13 @@ def handle_message(update):
             send_message(chat_id, purchase_message, reply_markup=inline_keyboard)
             return
         
+        # Handle non-admin users with unrecognized commands
+        if user_id != ADMIN_ID:
+            # Only respond to /start and keyboard button for non-admin users
+            # All other messages are ignored
+            send_message(chat_id, "ការចុចពាក្យបញ្ជាមិនត្រឹមត្រូវ", reply_markup=COUPON_KEYBOARD)
+            return
+        
         # Admin-only commands
         if user_id == ADMIN_ID:
             # Handle /add_account command
