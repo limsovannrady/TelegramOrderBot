@@ -176,7 +176,7 @@ def handle_message(update):
             
             # If no accounts available, show a message
             if not inline_buttons:
-                send_message(chat_id, "_សូមអភ័យទោស អស់ពីស្តុក🪤_", parse_mode="Markdown", reply_markup=COUPON_KEYBOARD)
+                send_message(chat_id, "_សូមអភ័យទោស អស់ពីស្តុក 🪤_", parse_mode="Markdown", reply_markup=COUPON_KEYBOARD)
                 return
             
             # Create inline keyboard markup
