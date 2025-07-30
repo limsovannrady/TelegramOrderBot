@@ -35,11 +35,14 @@ accounts_data = {
     'prices': {}
 }
 
-# Persistent keyboard
+# Persistent keyboard - Regular keyboard (not inline)
 COUPON_KEYBOARD = {
-    'inline_keyboard': [
-        [{'text': '🧧គូប៉ុង E-GetS', 'callback_data': 'coupon_egets'}]
-    ]
+    'keyboard': [
+        ['🧧គូប៉ុង E-GetS']
+    ],
+    'resize_keyboard': True,
+    'one_time_keyboard': False,
+    'input_field_placeholder': 'ជ្រើសរើសការបញ្ជាទិញ...'
 }
 
 def send_message(chat_id, text, reply_to_message_id=None, parse_mode=None, reply_markup=None):
@@ -87,30 +90,10 @@ def get_updates(offset=None):
         return None
 
 def handle_callback_query(update):
-    """Handle callback query (inline button clicks)."""
-    try:
-        callback_query = update.get('callback_query')
-        if not callback_query:
-            return
-        
-        chat_id = callback_query['message']['chat']['id']
-        callback_data = callback_query.get('data')
-        user = callback_query.get('from', {})
-        user_id = user.get('id')
-        
-        logger.info(f"Received callback from user {user.get('first_name', 'Unknown')} (ID: {user_id}): {callback_data}")
-        
-        # Handle coupon button click
-        if callback_data == 'coupon_egets':
-            # Send the start message again with keyboard
-            send_message(chat_id, KHMER_MESSAGE, reply_markup=COUPON_KEYBOARD)
-            
-        # Answer callback query to remove loading state
-        answer_url = f"{API_URL}/answerCallbackQuery"
-        requests.post(answer_url, data={'callback_query_id': callback_query['id']}, timeout=5)
-        
-    except Exception as e:
-        logger.error(f"Error handling callback query: {e}")
+    """Handle callback query (inline button clicks) - Not used with regular keyboards."""
+    # This function is kept for future inline keyboard features
+    # Regular keyboards don't generate callback queries
+    pass
 
 def handle_message(update):
     """Handle incoming message."""
@@ -140,6 +123,13 @@ def handle_message(update):
                 logger.info(f"Successfully sent Khmer message to user {user_id}")
             else:
                 logger.error(f"Failed to send message to user {user_id}")
+            return
+        
+        # Handle keyboard button press for all users
+        if text.strip() == '🧧គូប៉ុង E-GetS':
+            logger.info(f"User {user_id} pressed the coupon keyboard button")
+            # Send the start message again with keyboard
+            send_message(chat_id, KHMER_MESSAGE, reply_markup=COUPON_KEYBOARD)
             return
         
         # Admin-only commands
