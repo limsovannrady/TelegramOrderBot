@@ -113,15 +113,12 @@ def handle_callback_query(update):
                 price = accounts_data['prices'].get(account_type, 0)
                 
                 if count > 0:
-                    # Create reply message with quote functionality
+                    # Create regular message without reply quote
                     reply_message = f"មាន {count} នៅក្នុងស្តុក\n"
                     reply_message += f"តម្លៃ ${price} ក្នុងមួយ Account\n\n"
                     reply_message += "*សូមបញ្ចូលចំនួន Accounts ដែលចង់ទិញ៖*"
                     
-                    # Get the original message ID for reply quote
-                    original_message_id = callback_query['message']['message_id']
-                    
-                    send_message(chat_id, reply_message, reply_to_message_id=original_message_id, parse_mode="Markdown", reply_markup=COUPON_KEYBOARD)
+                    send_message(chat_id, reply_message, parse_mode="Markdown", reply_markup=COUPON_KEYBOARD)
                 else:
                     send_message(chat_id, f"សុំទោស! Account {account_type} អស់ស្តុកហើយ។", reply_markup=COUPON_KEYBOARD)
             
