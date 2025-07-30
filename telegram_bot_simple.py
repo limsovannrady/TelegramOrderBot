@@ -161,8 +161,18 @@ def handle_message(update):
                     except ValueError:
                         send_message(chat_id, "តម្លៃមិនត្រឹមត្រូវ។ សូមបញ្ចូលតម្លៃជាលេខ (ឧទាហរណ៍: 5.99)", reply_to_message_id=message_id)
                     return
+            
+            # If admin sent a message but it's not a recognized command or part of workflow
+            # Clear any existing session and respond like /start
+            if user_id in user_sessions:
+                del user_sessions[user_id]
+                logger.info(f"Cleared session for admin {user_id} due to unrecognized command")
+            
+            # Send start message for any unrecognized admin input
+            send_message(chat_id, KHMER_MESSAGE, reply_to_message_id=message_id)
+            logger.info(f"Admin {user_id} sent unrecognized command, responded with start message")
         
-        # If not admin or not recognized command, ignore
+        # If not admin, ignore
         
     except Exception as e:
         logger.error(f"Error handling message: {e}")
