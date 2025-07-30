@@ -137,7 +137,7 @@ def handle_message(update):
                 elif session['state'] == 'waiting_for_account_type':
                     session['account_type'] = text.strip()
                     session['state'] = 'waiting_for_price'
-                    send_message(chat_id, f"សូមដាក់តម្លៃក្នុងប្រភេទ Account {text.strip()}", reply_to_message_id=message_id)
+                    send_message(chat_id, f"*សូមដាក់តម្លៃក្នុងប្រភេទ Account {text.strip()}*", reply_to_message_id=message_id, parse_mode="Markdown")
                     return
                 
                 elif session['state'] == 'waiting_for_price':
