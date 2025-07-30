@@ -129,7 +129,7 @@ def handle_message(update):
                         session['accounts'] = accounts
                         session['state'] = 'waiting_for_account_type'
                         count = len(accounts)
-                        send_message(chat_id, f"បានបញ្ចូល Account ចំនួន {count}\n\nសូមបញ្ចូលប្រភេទ Account៖", reply_to_message_id=message_id)
+                        send_message(chat_id, f"*បានបញ្ចូល Account ចំនួន {count}\n\nសូមបញ្ចូលប្រភេទ Account៖*", reply_to_message_id=message_id, parse_mode="Markdown")
                     else:
                         send_message(chat_id, "*សូមបញ្ចូលតាមទម្រង់៖*\n\n```\nលេខទូរសព្ទ | ពាក្យសម្ងាត់\n```", reply_to_message_id=message_id, parse_mode="Markdown")
                     return
