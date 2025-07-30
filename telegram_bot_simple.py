@@ -119,15 +119,6 @@ def handle_callback_query(update):
                     reply_message += "*សូមបញ្ចូលចំនួន Accounts ដែលចង់ទិញ៖*"
                     
                     send_message(chat_id, reply_message, parse_mode="Markdown", reply_markup=COUPON_KEYBOARD)
-                    
-                    # Delete the original message with inline buttons immediately
-                    original_message_id = callback_query['message']['message_id']
-                    delete_url = f"{API_URL}/deleteMessage"
-                    delete_data = {
-                        'chat_id': chat_id,
-                        'message_id': original_message_id
-                    }
-                    requests.post(delete_url, data=delete_data, timeout=5)
                 else:
                     send_message(chat_id, f"សុំទោស! Account {account_type} អស់ស្តុកហើយ។", reply_markup=COUPON_KEYBOARD)
             
