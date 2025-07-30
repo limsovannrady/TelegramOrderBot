@@ -113,6 +113,14 @@ def handle_callback_query(update):
                 price = accounts_data['prices'].get(account_type, 0)
                 
                 if count > 0:
+                    # Set user session to waiting for quantity
+                    user_sessions[user_id] = {
+                        'state': 'waiting_for_quantity',
+                        'account_type': account_type,
+                        'price': price,
+                        'available_count': count
+                    }
+                    
                     # Create regular message without reply quote
                     reply_message = f"មាន {count} នៅក្នុងស្តុក\n"
                     reply_message += f"តម្លៃ ${price} ក្នុងមួយ Account\n\n"
@@ -121,6 +129,19 @@ def handle_callback_query(update):
                     send_message(chat_id, reply_message, parse_mode="Markdown", reply_markup=COUPON_KEYBOARD)
                 else:
                     send_message(chat_id, f"សុំទោស! Account {account_type} អស់ស្តុកហើយ។", reply_markup=COUPON_KEYBOARD)
+        
+        # Handle purchase confirmation buttons
+        elif callback_data == 'confirm_purchase':
+            if user_id in user_sessions and user_sessions[user_id].get('state') == 'purchase_confirmation':
+                session = user_sessions[user_id]
+                # Here you would implement the actual purchase logic
+                send_message(chat_id, "✅ *ការទិញបានបញ្ជាក់ដោយជោគជ័យ!*\n\nនឹងផ្ញើ Account ឲ្យអ្នកក្នុងពេលឆាប់ៗនេះ។", parse_mode="Markdown", reply_markup=COUPON_KEYBOARD)
+                del user_sessions[user_id]
+            
+        elif callback_data == 'cancel_purchase':
+            if user_id in user_sessions:
+                del user_sessions[user_id]
+            send_message(chat_id, "🚫 *បានបោះបង់ការទិញ*", parse_mode="Markdown", reply_markup=COUPON_KEYBOARD)
             
         # Answer callback query to remove loading state
         answer_url = f"{API_URL}/answerCallbackQuery"
@@ -177,8 +198,55 @@ def handle_message(update):
             show_account_selection()
             return
         
-        # Handle non-admin users with unrecognized commands - show same interface
+        # Handle non-admin users
         if user_id != ADMIN_ID:
+            # Check if user is in a purchase session
+            if user_id in user_sessions:
+                session = user_sessions[user_id]
+                
+                # Handle quantity input
+                if session['state'] == 'waiting_for_quantity':
+                    try:
+                        quantity = int(text.strip())
+                        if quantity <= 0:
+                            send_message(chat_id, "សូមបញ្ចូលចំនួនធំជាង 0", reply_markup=COUPON_KEYBOARD)
+                            return
+                        
+                        if quantity > session['available_count']:
+                            send_message(chat_id, f"សុំទោស! មានត្រឹមតែ {session['available_count']} នៅក្នុងស្តុក", reply_markup=COUPON_KEYBOARD)
+                            return
+                        
+                        # Calculate total price
+                        total_price = quantity * session['price']
+                        
+                        # Update session for confirmation
+                        session['state'] = 'purchase_confirmation'
+                        session['quantity'] = quantity
+                        session['total_price'] = total_price
+                        
+                        # Create confirmation message
+                        confirmation_message = "សូមបញ្ជាក់ការទិញរបស់អ្នក\n\n"
+                        confirmation_message += f"```\n🔸ប្រភេទ: {session['account_type']}\n"
+                        confirmation_message += f"🔸ចំនួន: {quantity}\n"
+                        confirmation_message += f"🔸តម្លៃសរុប: {total_price}USD\n```"
+                        
+                        # Create inline buttons for confirmation
+                        inline_buttons = [
+                            [
+                                {'text': '🚫 បោះបង់', 'callback_data': 'cancel_purchase'},
+                                {'text': '✅ បញ្ជាក់ការទិញ', 'callback_data': 'confirm_purchase'}
+                            ]
+                        ]
+                        inline_keyboard = {'inline_keyboard': inline_buttons}
+                        
+                        send_message(chat_id, confirmation_message, parse_mode="Markdown", reply_markup=inline_keyboard)
+                        return
+                        
+                    except ValueError:
+                        send_message(chat_id, "សូមបញ្ចូលចំនួនជាលេខ (ឧទាហរណ៍: 1, 2, 3)", reply_markup=COUPON_KEYBOARD)
+                        return
+            
+            # For unrecognized commands, show account selection
             logger.info(f"Non-admin user {user_id} sent unrecognized command, showing account selection")
             show_account_selection()
             return

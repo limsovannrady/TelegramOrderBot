@@ -27,8 +27,16 @@ The architecture avoids complex library dependencies and ensures reliable operat
 - **get_updates()**: Polling for new messages
 
 ### User Commands
-- **/start**: Available to all users, sends Khmer account selection message with persistent inline keyboard
-- **🧧គូប៉ុង E-GetS Button**: Persistent inline keyboard button that refreshes main message
+- **/start**: Available to all users, sends Khmer account selection message with inline keyboard
+- **គូប៉ុង E-GetS Button**: Persistent keyboard button that shows account selection interface
+
+### Purchase Flow (Non-Admin Users)
+1. **Account Selection**: Click inline buttons to select account type (e.g., "ទិញ Facebook - មានក្នុងស្តុក 5")
+2. **Quantity Input**: Enter desired quantity after seeing stock and price information
+3. **Purchase Confirmation**: Review order details with inline buttons:
+   - 🚫 បោះបង់ (Cancel Purchase)
+   - ✅ បញ្ជាក់ការទិញ (Confirm Purchase)
+4. **Validation**: System checks quantity validity and stock availability
 
 ### Admin Commands (ID: 5002402843)
 - **/add_account**: Starts account addition workflow
