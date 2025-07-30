@@ -38,7 +38,7 @@ accounts_data = {
 # Persistent keyboard - Regular keyboard (not inline)
 COUPON_KEYBOARD = {
     'keyboard': [
-        ['🧧គូប៉ុង E-GetS']
+        ['គូប៉ុង E-GetS']
     ],
     'resize_keyboard': True,
     'one_time_keyboard': False
@@ -125,7 +125,7 @@ def handle_message(update):
             return
         
         # Handle keyboard button press for all users
-        if text.strip() == '🧧គូប៉ុង E-GetS':
+        if text.strip() == 'គូប៉ុង E-GetS':
             logger.info(f"User {user_id} pressed the coupon keyboard button")
             # Send the start message again with keyboard
             send_message(chat_id, KHMER_MESSAGE, reply_markup=COUPON_KEYBOARD)
