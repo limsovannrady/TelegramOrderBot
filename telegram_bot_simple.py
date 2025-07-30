@@ -35,7 +35,7 @@ accounts_data = {
     'prices': {}
 }
 
-def send_message(chat_id, text, reply_to_message_id=None):
+def send_message(chat_id, text, reply_to_message_id=None, parse_mode=None):
     """Send a message to a specific chat."""
     url = f"{API_URL}/sendMessage"
     data = {
@@ -45,6 +45,9 @@ def send_message(chat_id, text, reply_to_message_id=None):
     
     if reply_to_message_id:
         data['reply_to_message_id'] = reply_to_message_id
+    
+    if parse_mode:
+        data['parse_mode'] = parse_mode
     
     try:
         response = requests.post(url, data=data, timeout=10)
@@ -128,7 +131,7 @@ def handle_message(update):
                         count = len(accounts)
                         send_message(chat_id, f"បានបញ្ចូល Account ចំនួន {count}\n\nសូមបញ្ចូលប្រភេទ Account៖", reply_to_message_id=message_id)
                     else:
-                        send_message(chat_id, "សូមបញ្ចូលតាមទម្រង់៖\nលេខទូរសព្ទ | ពាក្យសម្ងាត់", reply_to_message_id=message_id)
+                        send_message(chat_id, "*សូមបញ្ចូលតាមទម្រង់៖*\n```\nលេខទូរសព្ទ | ពាក្យសម្ងាត់\n```", reply_to_message_id=message_id, parse_mode="Markdown")
                     return
                 
                 elif session['state'] == 'waiting_for_account_type':
