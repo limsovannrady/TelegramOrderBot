@@ -131,7 +131,7 @@ def handle_message(update):
                         count = len(accounts)
                         send_message(chat_id, f"បានបញ្ចូល Account ចំនួន {count}\n\nសូមបញ្ចូលប្រភេទ Account៖", reply_to_message_id=message_id)
                     else:
-                        send_message(chat_id, "*សូមបញ្ចូលតាមទម្រង់៖*\n```\nលេខទូរសព្ទ | ពាក្យសម្ងាត់\n```", reply_to_message_id=message_id, parse_mode="Markdown")
+                        send_message(chat_id, "សូមបញ្ចូលតាមទម្រង់៖\n\n```\nលេខទូរសព្ទ | ពាក្យសម្ងាត់\n```", reply_to_message_id=message_id, parse_mode="Markdown")
                     return
                 
                 elif session['state'] == 'waiting_for_account_type':
