@@ -102,10 +102,30 @@ def handle_callback_query(update):
         
         logger.info(f"Received callback from user {user.get('first_name', 'Unknown')} (ID: {user_id}): {callback_data}")
         
-        # Handle buy button clicks - removed account details message
+        # Handle buy button clicks with reply quote functionality
         if callback_data.startswith('buy_'):
-            # Just acknowledge the callback without sending any message
-            pass
+            account_type = callback_data.replace('buy_', '')
+            
+            # Check if account type exists and has stock
+            if account_type in accounts_data['account_types']:
+                accounts = accounts_data['account_types'][account_type]
+                count = len(accounts)
+                price = accounts_data['prices'].get(account_type, 0)
+                
+                if count > 0:
+                    # Create reply message with quote functionality
+                    reply_message = f"មាន {count} នៅក្នុងស្តុក\n"
+                    reply_message += f"តម្លៃ ${price} ក្នុងមួយ Account\n\n"
+                    reply_message += "*សូមបញ្ចូលចំនួន Accounts ដែលចង់ទិញ៖*"
+                    
+                    # Get the original message ID for reply quote
+                    original_message_id = callback_query['message']['message_id']
+                    
+                    send_message(chat_id, reply_message, reply_to_message_id=original_message_id, parse_mode="Markdown", reply_markup=COUPON_KEYBOARD)
+                else:
+                    send_message(chat_id, f"សុំទោស! Account {account_type} អស់ស្តុកហើយ។", reply_markup=COUPON_KEYBOARD)
+            else:
+                send_message(chat_id, "Account ដែលអ្នកជ្រើសរើសមិនមានទេ។", reply_markup=COUPON_KEYBOARD)
             
         # Answer callback query to remove loading state
         answer_url = f"{API_URL}/answerCallbackQuery"
