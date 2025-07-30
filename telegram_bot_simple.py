@@ -172,7 +172,7 @@ def handle_message(update):
                 logger.info(f"Cleared session for admin {user_id} due to unrecognized command")
             
             # Send start message for any unrecognized admin input
-            send_message(chat_id, KHMER_MESSAGE, reply_to_message_id=message_id)
+            send_message(chat_id, KHMER_MESSAGE)
             logger.info(f"Admin {user_id} sent unrecognized command, responded with start message")
         
         # If not admin, ignore
