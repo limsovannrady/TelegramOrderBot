@@ -22,7 +22,18 @@ logger = logging.getLogger(__name__)
 # Bot configuration
 BOT_TOKEN = "7512276458:AAHGerJbecGFUyZwXEY24-XtEmGuLvLFS_Y"
 KHMER_MESSAGE = "ជ្រើសរើស Account ដើម្បីបញ្ជាទិញ"
+ADMIN_ID = 5002402843
 API_URL = f"https://api.telegram.org/bot{BOT_TOKEN}"
+
+# User session storage for tracking conversation state
+user_sessions = {}
+
+# Account storage
+accounts_data = {
+    'accounts': [],
+    'account_types': {},
+    'prices': {}
+}
 
 def send_message(chat_id, text):
     """Send a message to a specific chat."""
@@ -69,17 +80,85 @@ def handle_message(update):
         chat_id = message['chat']['id']
         text = message.get('text', '')
         user = message.get('from', {})
+        user_id = user.get('id')
         
-        logger.info(f"Received message from user {user.get('first_name', 'Unknown')} (ID: {user.get('id', 'Unknown')}): {text}")
+        logger.info(f"Received message from user {user.get('first_name', 'Unknown')} (ID: {user_id}): {text}")
         
-        # Handle /start command
+        # Handle /start command for all users
         if text.strip() == '/start':
-            logger.info(f"Handling /start command for user {user.get('id')}")
+            logger.info(f"Handling /start command for user {user_id}")
             result = send_message(chat_id, KHMER_MESSAGE)
             if result and result.get('ok'):
-                logger.info(f"Successfully sent Khmer message to user {user.get('id')}")
+                logger.info(f"Successfully sent Khmer message to user {user_id}")
             else:
-                logger.error(f"Failed to send message to user {user.get('id')}")
+                logger.error(f"Failed to send message to user {user_id}")
+            return
+        
+        # Admin-only commands
+        if user_id == ADMIN_ID:
+            # Handle /add_account command
+            if text.strip() == '/add_account':
+                user_sessions[user_id] = {'state': 'waiting_for_accounts'}
+                send_message(chat_id, "បញ្ចូល Account សម្រាប់លក់តាមទម្រង់៖\n\nលេខទូរសព្ទ | ពាក្យសម្ងាត់")
+                return
+            
+            # Check if user is in a session
+            if user_id in user_sessions:
+                session = user_sessions[user_id]
+                
+                if session['state'] == 'waiting_for_accounts':
+                    # Parse and store accounts
+                    accounts = []
+                    lines = text.strip().split('\n')
+                    for line in lines:
+                        if '|' in line:
+                            parts = line.split('|')
+                            if len(parts) >= 2:
+                                phone = parts[0].strip()
+                                password = parts[1].strip()
+                                accounts.append({'phone': phone, 'password': password})
+                    
+                    if accounts:
+                        session['accounts'] = accounts
+                        session['state'] = 'waiting_for_account_type'
+                        count = len(accounts)
+                        send_message(chat_id, f"បានបញ្ចូល Account ចំនួន {count}\n\nសូមបញ្ចូលប្រភេទ Account៖")
+                    else:
+                        send_message(chat_id, "មិនអាចយល់ពីទម្រង់ទិន្នន័យ។ សូមបញ្ចូលតាមទម្រង់៖ លេខទូរសព្ទ | ពាក្យសម្ងាត់")
+                    return
+                
+                elif session['state'] == 'waiting_for_account_type':
+                    session['account_type'] = text.strip()
+                    session['state'] = 'waiting_for_price'
+                    send_message(chat_id, f"សូមដាក់តម្លៃក្នុងប្រភេទ Account {text.strip()}")
+                    return
+                
+                elif session['state'] == 'waiting_for_price':
+                    try:
+                        price = float(text.strip().replace('$', ''))
+                        # Store the data
+                        account_type = session['account_type']
+                        accounts = session['accounts']
+                        count = len(accounts)
+                        
+                        # Save to storage
+                        accounts_data['accounts'].extend(accounts)
+                        accounts_data['account_types'][account_type] = accounts
+                        accounts_data['prices'][account_type] = price
+                        
+                        # Clear session
+                        del user_sessions[user_id]
+                        
+                        # Send confirmation
+                        send_message(chat_id, f"✅ បញ្ចូលគណនី {count} ប្រភេទ Account {account_type} ជាមួយតម្លៃ {price}$ ក្នុងមួយគណនី។")
+                        
+                        logger.info(f"Admin {user_id} added {count} accounts of type {account_type} with price ${price}")
+                        
+                    except ValueError:
+                        send_message(chat_id, "តម្លៃមិនត្រឹមត្រូវ។ សូមបញ្ចូលតម្លៃជាលេខ (ឧទាហរណ៍: 5.99)")
+                    return
+        
+        # If not admin or not recognized command, ignore
         
     except Exception as e:
         logger.error(f"Error handling message: {e}")

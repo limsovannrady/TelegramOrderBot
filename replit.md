@@ -21,16 +21,24 @@ The architecture avoids complex library dependencies and ensures reliable operat
 
 ## Key Components
 
-### Bot Class (`TelegramBot`)
-- **Purpose**: Main bot controller that handles initialization and command processing
-- **Key Methods**:
-  - `start_command()`: Processes `/start` command and sends Khmer message
-  - `error_handler()`: Handles application-level errors (currently incomplete)
+### Bot Functions
+- **handle_message()**: Main message processor with state management
+- **send_message()**: Direct API message sending
+- **get_updates()**: Polling for new messages
 
-### Configuration Module
-- **Environment Variables**: Bot token management through environment variables
-- **Message Templates**: Centralized message storage for internationalization
-- **Logging Settings**: Configurable logging format and level
+### User Commands
+- **/start**: Available to all users, sends Khmer account selection message
+
+### Admin Commands (ID: 5002402843)
+- **/add_account**: Starts account addition workflow
+  - Step 1: Input accounts in format "phone | password"
+  - Step 2: Input account type
+  - Step 3: Set price per account
+  - Completion: Confirms addition with count, type, and price
+
+### Session Management
+- **user_sessions**: Tracks conversation state for multi-step workflows
+- **accounts_data**: Stores account information, types, and pricing
 
 ### Logging System
 - **Dual Output**: Logs to both console (stdout) and file (`bot.log`)
