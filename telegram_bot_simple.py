@@ -251,14 +251,14 @@ def handle_message(update):
                     return
             
             # If admin sent a message but it's not a recognized command or part of workflow
-            # Clear any existing session and respond like /start
+            # Clear any existing session and show account selection interface
             if user_id in user_sessions:
                 del user_sessions[user_id]
                 logger.info(f"Cleared session for admin {user_id} due to unrecognized command")
             
-            # Send start message for any unrecognized admin input
-            send_message(chat_id, KHMER_MESSAGE, reply_markup=COUPON_KEYBOARD)
-            logger.info(f"Admin {user_id} sent unrecognized command, responded with start message")
+            # Show account selection interface for any unrecognized admin input
+            logger.info(f"Admin {user_id} sent unrecognized command, showing account selection interface")
+            show_account_selection()
         
         # If not admin, ignore
         
