@@ -106,7 +106,7 @@ def handle_message(update):
             # Handle /add_account command
             if text.strip() == '/add_account':
                 user_sessions[user_id] = {'state': 'waiting_for_accounts'}
-                send_message(chat_id, "បញ្ចូល Account សម្រាប់លក់តាមទម្រង់៖\n\nលេខទូរសព្ទ | ពាក្យសម្ងាត់", reply_to_message_id=message_id)
+                send_message(chat_id, "*បញ្ចូល Account សម្រាប់លក់តាមទម្រង់៖*\n\n```\nលេខទូរសព្ទ | ពាក្យសម្ងាត់\n```", reply_to_message_id=message_id, parse_mode="Markdown")
                 return
             
             # Check if user is in a session
