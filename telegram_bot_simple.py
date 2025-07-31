@@ -6,6 +6,8 @@ import time
 import logging
 import sys
 import json
+import random
+from bakong_khqr import KHQR
 
 # Configure logging
 logging.basicConfig(
@@ -24,6 +26,9 @@ BOT_TOKEN = "7512276458:AAHGerJbecGFUyZwXEY24-XtEmGuLvLFS_Y"
 KHMER_MESSAGE = "ជ្រើសរើស Account ដើម្បីបញ្ជាទិញ"
 ADMIN_ID = 5002402843
 API_URL = f"https://api.telegram.org/bot{BOT_TOKEN}"
+
+# Initialize KHQR with Bakong Developer Token
+khqr = KHQR("eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJkYXRhIjp7ImlkIjoiZGU5MmE5MzZiZTdhNDdhNyJ9LCJpYXQiOjE3NTM1MzQxMTEsImV4cCI6MTc2MTMxMDExMX0.xQlYk4GB8iLx62Lat6E1ep0gM5FHUI5Yf2486_Q9W6A")
 
 # User session storage for tracking conversation state
 user_sessions = {}
@@ -145,9 +150,52 @@ def handle_callback_query(update):
         elif callback_data == 'confirm_purchase':
             if user_id in user_sessions and user_sessions[user_id].get('state') == 'purchase_confirmation':
                 session = user_sessions[user_id]
-                # Here you would implement the actual purchase logic
-                send_message(chat_id, "✅ *ការទិញបានបញ្ជាក់ដោយជោគជ័យ!*\n\nនឹងផ្ញើ Account ឲ្យអ្នកក្នុងពេលឆាប់ៗនេះ។", parse_mode="Markdown", reply_markup=COUPON_KEYBOARD)
-                del user_sessions[user_id]
+                
+                try:
+                    # Generate unique bill number using timestamp and user ID
+                    bill_number = f"TRX{int(time.time())}{random.randint(100, 999)}"
+                    
+                    # Generate KHQR for payment
+                    qr_data = khqr.create_qr(
+                        bank_account='sovannrady@aclb',
+                        merchant_name='E-GetS Top Up',
+                        merchant_city='កំពង់សោម។',
+                        amount=session['total_price'],
+                        currency='USD',
+                        store_label='គូប៉ុង E-GetS',
+                        phone_number='85593330905',
+                        bill_number=bill_number,
+                        terminal_label='Cashier-01',
+                        static=False
+                    )
+                    
+                    # Generate MD5 hash for payment verification
+                    md5_hash = khqr.generate_md5(qr_data)
+                    
+                    # Store payment info in session for later verification
+                    session['qr_data'] = qr_data
+                    session['md5_hash'] = md5_hash
+                    session['bill_number'] = bill_number
+                    session['state'] = 'payment_pending'
+                    
+                    # Send KHQR payment message
+                    payment_message = f"✅ *ការទិញបានបញ្ជាក់ដោយជោគជ័យ!*\n\n"
+                    payment_message += f"```\n🔹 ប្រភេទ: {session['account_type']}\n"
+                    payment_message += f"🔹 ចំនួន: {session['quantity']}\n"
+                    payment_message += f"🔹 តម្លៃសរុប: {session['total_price']}USD\n"
+                    payment_message += f"🔹 លេខ Transaction: {bill_number}\n```\n\n"
+                    payment_message += f"*សូមស្កាន QR Code ខាងក្រោមដើម្បីបង់ប្រាក់៖*\n\n"
+                    payment_message += f"`{qr_data}`\n\n"
+                    payment_message += f"_បន្ទាប់ពីបង់ប្រាក់រួច នឹងផ្ញើ Account ឲ្យអ្នកក្នុងពេលឆាប់ៗ។_"
+                    
+                    send_message(chat_id, payment_message, parse_mode="Markdown", reply_markup=COUPON_KEYBOARD)
+                    
+                    logger.info(f"Generated KHQR for user {user_id}: Bill {bill_number}, Amount ${session['total_price']}, MD5: {md5_hash}")
+                    
+                except Exception as e:
+                    logger.error(f"Error generating KHQR: {e}")
+                    send_message(chat_id, "❌ *មានបញ្ហាក្នុងការបង្កើត QR Code*\n\nសូមព្យាយាមម្តងទៀត។", parse_mode="Markdown", reply_markup=COUPON_KEYBOARD)
+                    del user_sessions[user_id]
             
         elif callback_data == 'cancel_purchase':
             if user_id in user_sessions:

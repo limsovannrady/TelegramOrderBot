@@ -36,7 +36,12 @@ The architecture avoids complex library dependencies and ensures reliable operat
 3. **Purchase Confirmation**: Review order details with inline buttons:
    - 🚫 បោះបង់ (Cancel Purchase)
    - ✅ បញ្ជាក់ការទិញ (Confirm Purchase)
-4. **Validation**: System checks quantity validity and stock availability
+4. **KHQR Payment Generation**: Upon confirmation, bot generates Bakong KHQR with:
+   - Unique transaction ID
+   - Total amount in USD
+   - Merchant details (E-GetS Top Up)  
+   - QR code string for mobile payment
+5. **Payment Verification**: System maintains session with MD5 hash for payment tracking
 
 ### Admin Commands (ID: 5002402843)
 - **/add_account**: Starts account addition workflow
