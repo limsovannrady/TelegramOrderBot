@@ -180,66 +180,7 @@ def handle_callback_query(update):
             account_type = callback_data.replace('out_of_stock_', '')
             send_message(chat_id, f"សូមអភ័យទោស Account {account_type} អស់ពីស្តុក 🪤", reply_markup=COUPON_KEYBOARD)
         
-        # Handle purchase confirmation buttons
-        elif callback_data == 'confirm_purchase':
-            if user_id in user_sessions and user_sessions[user_id].get('state') == 'purchase_confirmation':
-                session = user_sessions[user_id]
-                
-                try:
-                    # Generate unique bill number using timestamp and user ID
-                    bill_number = f"TRX{int(time.time())}{random.randint(100, 999)}"
-                    
-                    # Generate KHQR for payment
-                    qr_data = khqr.create_qr(
-                        bank_account='sovannrady@aclb',
-                        merchant_name='E-GetS Top Up',
-                        merchant_city='កំពង់សោម។',
-                        amount=session['total_price'],
-                        currency='USD',
-                        store_label='គូប៉ុង E-GetS',
-                        phone_number='85593330905',
-                        bill_number=bill_number,
-                        terminal_label='Cashier-01',
-                        static=False
-                    )
-                    
-                    # Generate MD5 hash for payment verification
-                    md5_hash = khqr.generate_md5(qr_data)
-                    
-                    # Store payment info in session for later verification
-                    session['qr_data'] = qr_data
-                    session['md5_hash'] = md5_hash
-                    session['bill_number'] = bill_number
-                    session['state'] = 'payment_pending'
-                    
-                    # Generate QR code image using qrcode library
-                    qr_image = qrcode.make(qr_data)
-                    qr_filename = f"qr_{bill_number}.png"
-                    qr_image.save(qr_filename)
-                    
-                    # Skip payment confirmation message - send QR code directly
-                    
-                    # Send QR code image
-                    send_photo(chat_id, qr_filename, caption=f"_បន្ទាប់ពីបង់ប្រាក់រួច នឹងផ្ញើ Account ឲ្យអ្នកក្នុងពេលឆាប់ៗ។_", parse_mode="Markdown")
-                    
-                    # Clean up temporary file
-                    try:
-                        os.remove(qr_filename)
-                    except:
-                        pass
-                    
-                    logger.info(f"Generated KHQR for user {user_id}: Bill {bill_number}, Amount ${session['total_price']}, MD5: {md5_hash}")
-                    
-                    # Start payment monitoring in background
-                    monitor_thread = threading.Thread(target=monitor_payment, args=(chat_id, user_id, md5_hash, session))
-                    monitor_thread.daemon = True
-                    monitor_thread.start()
-                    
-                except Exception as e:
-                    logger.error(f"Error generating KHQR: {e}")
-                    send_message(chat_id, "❌ *មានបញ្ហាក្នុងការបង្កើត QR Code*\n\nសូមព្យាយាមម្តងទៀត។", parse_mode="Markdown", reply_markup=COUPON_KEYBOARD)
-                    del user_sessions[user_id]
-            
+        # Handle cancel purchase (though this is no longer used since we skip confirmation)
         elif callback_data == 'cancel_purchase':
             if user_id in user_sessions:
                 del user_sessions[user_id]
@@ -326,27 +267,64 @@ def handle_message(update):
                     # Calculate total price
                     total_price = quantity * session['price']
                     
-                    # Update session for confirmation
-                    session['state'] = 'purchase_confirmation'
+                    # Update session with purchase details
                     session['quantity'] = quantity
                     session['total_price'] = total_price
+                    session['state'] = 'payment_pending'
                     
-                    # Create confirmation message
-                    confirmation_message = "សូមបញ្ជាក់ការទិញរបស់អ្នក\n\n"
-                    confirmation_message += f"```\n🔸ប្រភេទ: {session['account_type']}\n\n"
-                    confirmation_message += f"🔸ចំនួន: {quantity}\n\n"
-                    confirmation_message += f"🔸តម្លៃសរុប: {total_price}USD\n```"
+                    # Directly generate KHQR and send QR code
+                    try:
+                        # Generate unique bill number using timestamp and user ID
+                        bill_number = f"TRX{int(time.time())}{random.randint(100, 999)}"
+                        
+                        # Generate KHQR for payment
+                        qr_data = khqr.create_qr(
+                            bank_account='sovannrady@aclb',
+                            merchant_name='E-GetS Top Up',
+                            merchant_city='កំពង់សោម។',
+                            amount=session['total_price'],
+                            currency='USD',
+                            store_label='គូប៉ុង E-GetS',
+                            phone_number='85593330905',
+                            bill_number=bill_number,
+                            terminal_label='Cashier-01',
+                            static=False
+                        )
+                        
+                        # Generate MD5 hash for payment verification
+                        md5_hash = khqr.generate_md5(qr_data)
+                        
+                        # Store payment info in session for later verification
+                        session['qr_data'] = qr_data
+                        session['md5_hash'] = md5_hash
+                        session['bill_number'] = bill_number
+                        
+                        # Generate QR code image using qrcode library
+                        qr_image = qrcode.make(qr_data)
+                        qr_filename = f"qr_{bill_number}.png"
+                        qr_image.save(qr_filename)
+                        
+                        # Send QR code image directly
+                        send_photo(chat_id, qr_filename, caption=f"_បន្ទាប់ពីបង់ប្រាក់រួច នឹងផ្ញើ Account ឲ្យអ្នកក្នុងពេលឆាប់ៗ។_", parse_mode="Markdown")
+                        
+                        # Clean up temporary file
+                        try:
+                            os.remove(qr_filename)
+                        except:
+                            pass
+                        
+                        logger.info(f"Generated KHQR for user {user_id}: Bill {bill_number}, Amount ${session['total_price']}, MD5: {md5_hash}")
+                        
+                        # Start payment monitoring in background
+                        monitor_thread = threading.Thread(target=monitor_payment, args=(chat_id, user_id, md5_hash, session))
+                        monitor_thread.daemon = True
+                        monitor_thread.start()
+                        
+                    except Exception as e:
+                        logger.error(f"Error generating KHQR: {e}")
+                        send_message(chat_id, "❌ *មានបញ្ហាក្នុងការបង្កើត QR Code*\n\nសូមព្យាយាមម្តងទៀត។", parse_mode="Markdown", reply_markup=COUPON_KEYBOARD)
+                        del user_sessions[user_id]
                     
-                    # Create inline buttons for confirmation
-                    inline_buttons = [
-                        [
-                            {'text': '🚫 បោះបង់', 'callback_data': 'cancel_purchase'},
-                            {'text': '✅ បញ្ជាក់ការទិញ', 'callback_data': 'confirm_purchase'}
-                        ]
-                    ]
-                    inline_keyboard = {'inline_keyboard': inline_buttons}
-                    
-                    send_message(chat_id, confirmation_message, parse_mode="Markdown", reply_markup=inline_keyboard)
                     return
                     
                 except ValueError:
