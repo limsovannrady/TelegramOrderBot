@@ -229,9 +229,9 @@ def handle_message(update):
                     
                     # Create confirmation message
                     confirmation_message = "សូមបញ្ជាក់ការទិញរបស់អ្នក\n\n"
-                    confirmation_message += f"🔸ប្រភេទ: {session['account_type']}\n\n"
+                    confirmation_message += f"```\n🔸ប្រភេទ: {session['account_type']}\n\n"
                     confirmation_message += f"🔸ចំនួន: {quantity}\n\n"
-                    confirmation_message += f"🔸តម្លៃសរុប: {total_price}USD"
+                    confirmation_message += f"🔸តម្លៃសរុប: {total_price}USD\n```"
                     
                     # Create inline buttons for confirmation
                     inline_buttons = [
@@ -242,7 +242,7 @@ def handle_message(update):
                     ]
                     inline_keyboard = {'inline_keyboard': inline_buttons}
                     
-                    send_message(chat_id, confirmation_message, reply_markup=inline_keyboard)
+                    send_message(chat_id, confirmation_message, parse_mode="Markdown", reply_markup=inline_keyboard)
                     return
                     
                 except ValueError:
