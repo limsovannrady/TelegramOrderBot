@@ -30,6 +30,12 @@ The architecture avoids complex library dependencies and ensures reliable operat
 - **/start**: Available to all users, sends Khmer account selection message with inline keyboard
 - **គូប៉ុង E-GetS Button**: Persistent keyboard button that shows account selection interface
 
+### Stock Management Features
+- **Smart Stock Display**: Shows available stock count for each account type
+- **Out-of-Stock Indicators**: Displays "សូមអភ័យទោស អស់ពីស្តុក 🪤" for empty account types
+- **Visual Distinction**: Clear differentiation between purchasable and out-of-stock items
+- **Automatic Stock Updates**: Real-time stock count updates as accounts are sold
+
 ### Purchase Flow (Non-Admin Users)
 1. **Account Selection**: Click inline buttons to select account type (e.g., "ទិញ Facebook - មានក្នុងស្តុក 5")
 2. **Quantity Input**: Enter desired quantity after seeing stock and price information
