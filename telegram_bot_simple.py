@@ -8,6 +8,7 @@ import sys
 import json
 import random
 import os
+import threading
 from bakong_khqr import KHQR
 import qrcode
 
@@ -232,6 +233,11 @@ def handle_callback_query(update):
                     
                     logger.info(f"Generated KHQR for user {user_id}: Bill {bill_number}, Amount ${session['total_price']}, MD5: {md5_hash}")
                     
+                    # Start payment monitoring in background
+                    monitor_thread = threading.Thread(target=monitor_payment, args=(chat_id, user_id, md5_hash, session))
+                    monitor_thread.daemon = True
+                    monitor_thread.start()
+                    
                 except Exception as e:
                     logger.error(f"Error generating KHQR: {e}")
                     send_message(chat_id, "❌ *មានបញ្ហាក្នុងការបង្កើត QR Code*\n\nសូមព្យាយាមម្តងទៀត។", parse_mode="Markdown", reply_markup=COUPON_KEYBOARD)
@@ -428,6 +434,92 @@ def handle_message(update):
         
     except Exception as e:
         logger.error(f"Error handling message: {e}")
+
+def monitor_payment(chat_id, user_id, md5_hash, session):
+    """Monitor payment status and send accounts when payment is confirmed."""
+    max_attempts = 30  # Monitor for 15 minutes (30 attempts x 30 seconds)
+    attempt = 0
+    
+    while attempt < max_attempts:
+        try:
+            # Check payment status using KHQR
+            payment_status = khqr.check_payment(md5_hash)
+            logger.info(f"Payment check attempt {attempt + 1} for user {user_id}: {payment_status}")
+            
+            if payment_status == "PAID":
+                # Payment confirmed, send accounts
+                account_type = session['account_type']
+                quantity = session['quantity']
+                
+                # Get accounts from storage
+                if account_type in accounts_data['account_types']:
+                    available_accounts = accounts_data['account_types'][account_type]
+                    
+                    if len(available_accounts) >= quantity:
+                        # Take the required number of accounts
+                        delivered_accounts = available_accounts[:quantity]
+                        
+                        # Remove delivered accounts from storage
+                        accounts_data['account_types'][account_type] = available_accounts[quantity:]
+                        
+                        # Format accounts message
+                        accounts_message = f"🎉 *ការទិញបានបញ្ជាក់ដោយជោគជ័យ!*\n\n"
+                        accounts_message += f"```\n🔹 ប្រភេទ: {account_type}\n"
+                        accounts_message += f"🔹 ចំនួន: {quantity}\n"
+                        accounts_message += f"🔹 លេខ Transaction: {session['bill_number']}\n```\n\n"
+                        accounts_message += "*Accounts របស់អ្នក៖*\n\n"
+                        
+                        for i, account in enumerate(delivered_accounts, 1):
+                            accounts_message += f"`{i}. {account['phone']} | {account['password']}`\n"
+                        
+                        accounts_message += f"\n_សូមអរគុណសម្រាប់ការទិញ! 🙏_"
+                        
+                        # Send accounts to user
+                        send_message(chat_id, accounts_message, parse_mode="Markdown", reply_markup=COUPON_KEYBOARD)
+                        
+                        # Clear user session
+                        if user_id in user_sessions:
+                            del user_sessions[user_id]
+                        
+                        logger.info(f"Payment confirmed and {quantity} accounts delivered to user {user_id}")
+                        return
+                    else:
+                        # Not enough accounts available
+                        error_message = f"❌ *មានបញ្ហា!*\n\nសុំទោស! មានត្រឹមតែ {len(available_accounts)} Accounts នៅក្នុងស្តុក។"
+                        send_message(chat_id, error_message, parse_mode="Markdown", reply_markup=COUPON_KEYBOARD)
+                        logger.error(f"Insufficient accounts for user {user_id}: requested {quantity}, available {len(available_accounts)}")
+                        return
+                else:
+                    # Account type not found
+                    error_message = f"❌ *មានបញ្ហា!*\n\nគ្មាន Account ប្រភេទ {account_type} ក្នុងស្តុក។"
+                    send_message(chat_id, error_message, parse_mode="Markdown", reply_markup=COUPON_KEYBOARD)
+                    logger.error(f"Account type {account_type} not found for user {user_id}")
+                    return
+            
+            elif payment_status == "UNPAID":
+                # Still waiting for payment
+                attempt += 1
+                time.sleep(30)  # Check every 30 seconds
+            else:
+                # Unknown status
+                logger.warning(f"Unknown payment status for user {user_id}: {payment_status}")
+                attempt += 1
+                time.sleep(30)
+                
+        except Exception as e:
+            logger.error(f"Error monitoring payment for user {user_id}: {e}")
+            attempt += 1
+            time.sleep(30)
+    
+    # Payment monitoring timeout
+    timeout_message = f"⏰ *ការបង់ប្រាក់ហួសពេល*\n\nការទិញរបស់អ្នកត្រូវបានលុបចោលដោយសារហួសពេលកំណត់ (15 នាទី)។\n\nសូមធ្វើការទិញម្តងទៀត។"
+    send_message(chat_id, timeout_message, parse_mode="Markdown", reply_markup=COUPON_KEYBOARD)
+    
+    # Clear session
+    if user_id in user_sessions:
+        del user_sessions[user_id]
+    
+    logger.info(f"Payment monitoring timeout for user {user_id}")
 
 def main():
     """Main bot loop."""
