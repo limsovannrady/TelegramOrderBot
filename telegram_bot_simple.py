@@ -113,7 +113,7 @@ def handle_callback_query(update):
                 price = accounts_data['prices'].get(account_type, 0)
                 
                 if count > 0:
-                    # Set user session to waiting for quantity
+                    # Always allow user to select account type (reset any existing session)
                     user_sessions[user_id] = {
                         'state': 'waiting_for_quantity',
                         'account_type': account_type,
@@ -127,6 +127,8 @@ def handle_callback_query(update):
                     reply_message += "*សូមបញ្ចូលចំនួន Accounts ដែលចង់ទិញ៖*"
                     
                     send_message(chat_id, reply_message, parse_mode="Markdown", reply_markup=COUPON_KEYBOARD)
+                    
+                    logger.info(f"User {user_id} selected account type {account_type}, waiting for quantity input")
                 else:
                     send_message(chat_id, f"សុំទោស! Account {account_type} អស់ស្តុកហើយ។", reply_markup=COUPON_KEYBOARD)
         
