@@ -217,15 +217,7 @@ def handle_callback_query(update):
                     qr_filename = f"qr_{bill_number}.png"
                     qr_image.save(qr_filename)
                     
-                    # Send payment confirmation message first
-                    payment_message = f"✅ *ការទិញបានបញ្ជាក់ដោយជោគជ័យ!*\n\n"
-                    payment_message += f"```\n🔹 ប្រភេទ: {session['account_type']}\n"
-                    payment_message += f"🔹 ចំនួន: {session['quantity']}\n"
-                    payment_message += f"🔹 តម្លៃសរុប: {session['total_price']}USD\n"
-                    payment_message += f"🔹 លេខ Transaction: {bill_number}\n```\n\n"
-                    payment_message += f"*សូមស្កាន QR Code ខាងក្រោមដើម្បីបង់ប្រាក់៖*"
-                    
-                    send_message(chat_id, payment_message, parse_mode="Markdown", reply_markup=COUPON_KEYBOARD)
+                    # Skip payment confirmation message - send QR code directly
                     
                     # Send QR code image
                     send_photo(chat_id, qr_filename, caption=f"_បន្ទាប់ពីបង់ប្រាក់រួច នឹងផ្ញើ Account ឲ្យអ្នកក្នុងពេលឆាប់ៗ។_", parse_mode="Markdown")
