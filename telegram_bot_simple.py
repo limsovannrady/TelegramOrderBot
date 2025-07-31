@@ -7,7 +7,9 @@ import logging
 import sys
 import json
 import random
+import os
 from bakong_khqr import KHQR
+import qrcode
 
 # Configure logging
 logging.basicConfig(
@@ -72,6 +74,32 @@ def send_message(chat_id, text, reply_to_message_id=None, parse_mode=None, reply
         return response.json()
     except requests.RequestException as e:
         logger.error(f"Failed to send message: {e}")
+        return None
+
+def send_photo(chat_id, photo_path, caption=None, parse_mode=None, reply_markup=None):
+    """Send a photo to a specific chat."""
+    url = f"{API_URL}/sendPhoto"
+    data = {
+        'chat_id': chat_id
+    }
+    
+    if caption:
+        data['caption'] = caption
+    
+    if parse_mode:
+        data['parse_mode'] = parse_mode
+    
+    if reply_markup:
+        data['reply_markup'] = json.dumps(reply_markup)
+    
+    try:
+        with open(photo_path, 'rb') as photo:
+            files = {'photo': photo}
+            response = requests.post(url, data=data, files=files, timeout=10)
+            response.raise_for_status()
+            return response.json()
+    except requests.RequestException as e:
+        logger.error(f"Failed to send photo: {e}")
         return None
 
 def get_updates(offset=None):
@@ -178,17 +206,29 @@ def handle_callback_query(update):
                     session['bill_number'] = bill_number
                     session['state'] = 'payment_pending'
                     
-                    # Send KHQR payment message
+                    # Generate QR code image using qrcode library
+                    qr_image = qrcode.make(qr_data)
+                    qr_filename = f"qr_{bill_number}.png"
+                    qr_image.save(qr_filename)
+                    
+                    # Send payment confirmation message first
                     payment_message = f"✅ *ការទិញបានបញ្ជាក់ដោយជោគជ័យ!*\n\n"
                     payment_message += f"```\n🔹 ប្រភេទ: {session['account_type']}\n"
                     payment_message += f"🔹 ចំនួន: {session['quantity']}\n"
                     payment_message += f"🔹 តម្លៃសរុប: {session['total_price']}USD\n"
                     payment_message += f"🔹 លេខ Transaction: {bill_number}\n```\n\n"
-                    payment_message += f"*សូមស្កាន QR Code ខាងក្រោមដើម្បីបង់ប្រាក់៖*\n\n"
-                    payment_message += f"`{qr_data}`\n\n"
-                    payment_message += f"_បន្ទាប់ពីបង់ប្រាក់រួច នឹងផ្ញើ Account ឲ្យអ្នកក្នុងពេលឆាប់ៗ។_"
+                    payment_message += f"*សូមស្កាន QR Code ខាងក្រោមដើម្បីបង់ប្រាក់៖*"
                     
                     send_message(chat_id, payment_message, parse_mode="Markdown", reply_markup=COUPON_KEYBOARD)
+                    
+                    # Send QR code image
+                    send_photo(chat_id, qr_filename, caption=f"_បន្ទាប់ពីបង់ប្រាក់រួច នឹងផ្ញើ Account ឲ្យអ្នកក្នុងពេលឆាប់ៗ។_", parse_mode="Markdown")
+                    
+                    # Clean up temporary file
+                    try:
+                        os.remove(qr_filename)
+                    except:
+                        pass
                     
                     logger.info(f"Generated KHQR for user {user_id}: Bill {bill_number}, Amount ${session['total_price']}, MD5: {md5_hash}")
                     
