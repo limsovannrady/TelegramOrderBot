@@ -203,6 +203,52 @@ def handle_message(update):
             purchase_message = "សូមជ្រើសរើស Account ដើម្បីទិញ៖"
             send_message(chat_id, purchase_message, reply_markup=inline_keyboard)
         
+        # Check if user is in a purchase session (for all users including admin)
+        if user_id in user_sessions:
+            session = user_sessions[user_id]
+            
+            # Handle quantity input for purchase
+            if session['state'] == 'waiting_for_quantity':
+                try:
+                    quantity = int(text.strip())
+                    if quantity <= 0:
+                        send_message(chat_id, "សូមបញ្ចូលចំនួនធំជាង 0", reply_markup=COUPON_KEYBOARD)
+                        return
+                    
+                    if quantity > session['available_count']:
+                        send_message(chat_id, f"សុំទោស! មានត្រឹមតែ {session['available_count']} នៅក្នុងស្តុក", reply_markup=COUPON_KEYBOARD)
+                        return
+                    
+                    # Calculate total price
+                    total_price = quantity * session['price']
+                    
+                    # Update session for confirmation
+                    session['state'] = 'purchase_confirmation'
+                    session['quantity'] = quantity
+                    session['total_price'] = total_price
+                    
+                    # Create confirmation message
+                    confirmation_message = "សូមបញ្ជាក់ការទិញរបស់អ្នក\n\n"
+                    confirmation_message += f"🔸ប្រភេទ: {session['account_type']}\n\n"
+                    confirmation_message += f"🔸ចំនួន: {quantity}\n\n"
+                    confirmation_message += f"🔸តម្លៃសរុប: {total_price}USD"
+                    
+                    # Create inline buttons for confirmation
+                    inline_buttons = [
+                        [
+                            {'text': '🚫 បោះបង់', 'callback_data': 'cancel_purchase'},
+                            {'text': '✅ បញ្ជាក់ការទិញ', 'callback_data': 'confirm_purchase'}
+                        ]
+                    ]
+                    inline_keyboard = {'inline_keyboard': inline_buttons}
+                    
+                    send_message(chat_id, confirmation_message, reply_markup=inline_keyboard)
+                    return
+                    
+                except ValueError:
+                    send_message(chat_id, "សូមបញ្ចូលចំនួនជាលេខ (ឧទាហរណ៍: 1, 2, 3)", reply_markup=COUPON_KEYBOARD)
+                    return
+
         # Handle /start command, keyboard button, and invalid commands for all users
         if text.strip() == '/start' or text.strip() == 'គូប៉ុង E-GetS':
             logger.info(f"User {user_id} triggered account selection interface")
@@ -211,52 +257,6 @@ def handle_message(update):
         
         # Handle non-admin users
         if user_id != ADMIN_ID:
-            # Check if user is in a purchase session
-            if user_id in user_sessions:
-                session = user_sessions[user_id]
-                
-                # Handle quantity input
-                if session['state'] == 'waiting_for_quantity':
-                    try:
-                        quantity = int(text.strip())
-                        if quantity <= 0:
-                            send_message(chat_id, "សូមបញ្ចូលចំនួនធំជាង 0", reply_markup=COUPON_KEYBOARD)
-                            return
-                        
-                        if quantity > session['available_count']:
-                            send_message(chat_id, f"សុំទោស! មានត្រឹមតែ {session['available_count']} នៅក្នុងស្តុក", reply_markup=COUPON_KEYBOARD)
-                            return
-                        
-                        # Calculate total price
-                        total_price = quantity * session['price']
-                        
-                        # Update session for confirmation
-                        session['state'] = 'purchase_confirmation'
-                        session['quantity'] = quantity
-                        session['total_price'] = total_price
-                        
-                        # Create confirmation message
-                        confirmation_message = "សូមបញ្ជាក់ការទិញរបស់អ្នក\n\n"
-                        confirmation_message += f"```\n🔸ប្រភេទ: {session['account_type']}\n"
-                        confirmation_message += f"🔸ចំនួន: {quantity}\n"
-                        confirmation_message += f"🔸តម្លៃសរុប: {total_price}USD\n```"
-                        
-                        # Create inline buttons for confirmation
-                        inline_buttons = [
-                            [
-                                {'text': '🚫 បោះបង់', 'callback_data': 'cancel_purchase'},
-                                {'text': '✅ បញ្ជាក់ការទិញ', 'callback_data': 'confirm_purchase'}
-                            ]
-                        ]
-                        inline_keyboard = {'inline_keyboard': inline_buttons}
-                        
-                        send_message(chat_id, confirmation_message, parse_mode="Markdown", reply_markup=inline_keyboard)
-                        return
-                        
-                    except ValueError:
-                        send_message(chat_id, "សូមបញ្ចូលចំនួនជាលេខ (ឧទាហរណ៍: 1, 2, 3)", reply_markup=COUPON_KEYBOARD)
-                        return
-            
             # For unrecognized commands, show account selection
             logger.info(f"Non-admin user {user_id} sent unrecognized command, showing account selection")
             show_account_selection()
