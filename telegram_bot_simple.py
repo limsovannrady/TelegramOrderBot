@@ -354,6 +354,11 @@ def handle_message(update):
         # Handle /start command, keyboard button, and invalid commands for all users
         if text.strip() == '/start' or text.strip() == 'គូប៉ុង E-GetS':
             logger.info(f"User {user_id} triggered account selection interface")
+            if text.strip() == '/start':
+                try:
+                    send_photo(chat_id, 'start_banner.jpg', reply_markup=COUPON_KEYBOARD)
+                except Exception as e:
+                    logger.error(f"Failed to send banner image: {e}")
             show_account_selection()
             return
         
