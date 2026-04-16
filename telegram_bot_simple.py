@@ -9,14 +9,19 @@ import json
 import os
 import threading
 
+# Detect Vercel environment - use /tmp for writable storage
+IS_VERCEL = os.environ.get('VERCEL') == '1'
+DATA_DIR = '/tmp' if IS_VERCEL else '.'
+
 # Configure logging
+log_handlers = [logging.StreamHandler(sys.stdout)]
+if not IS_VERCEL:
+    log_handlers.append(logging.FileHandler('bot.log', encoding='utf-8'))
+
 logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
     level=logging.INFO,
-    handlers=[
-        logging.StreamHandler(sys.stdout),
-        logging.FileHandler('bot.log', encoding='utf-8')
-    ]
+    handlers=log_handlers
 )
 
 logger = logging.getLogger(__name__)
@@ -64,14 +69,18 @@ def check_payment_status(md5):
         logger.error(f"Failed to check payment status: {e}")
     return False
 
-# User session storage for tracking conversation state
-user_sessions = {}
-
-# File path for persistent storage
-DATA_FILE = 'accounts_data.json'
+# File paths - use /tmp on Vercel (read-only filesystem)
+DATA_FILE = os.path.join(DATA_DIR, 'accounts_data.json')
+SESSIONS_FILE = os.path.join(DATA_DIR, 'sessions.json')
 
 def load_data():
     """Load accounts data from JSON file."""
+    # On Vercel, seed /tmp from bundled file if not yet copied
+    if IS_VERCEL and not os.path.exists(DATA_FILE):
+        src = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'accounts_data.json')
+        if os.path.exists(src):
+            import shutil
+            shutil.copy(src, DATA_FILE)
     if os.path.exists(DATA_FILE):
         try:
             with open(DATA_FILE, 'r', encoding='utf-8') as f:
@@ -91,8 +100,34 @@ def save_data():
     except Exception as e:
         logger.error(f"Failed to save data to {DATA_FILE}: {e}")
 
+def load_sessions():
+    """Load user sessions from file (needed for Vercel stateless env)."""
+    global user_sessions
+    if os.path.exists(SESSIONS_FILE):
+        try:
+            with open(SESSIONS_FILE, 'r', encoding='utf-8') as f:
+                data = json.load(f)
+                user_sessions = {int(k): v for k, v in data.items()}
+        except Exception as e:
+            logger.error(f"Failed to load sessions: {e}")
+
+def save_sessions():
+    """Save user sessions to file."""
+    try:
+        with open(SESSIONS_FILE, 'w', encoding='utf-8') as f:
+            json.dump({str(k): v for k, v in user_sessions.items()}, f, ensure_ascii=False)
+    except Exception as e:
+        logger.error(f"Failed to save sessions: {e}")
+
+# User session storage for tracking conversation state
+user_sessions = {}
+
 # Account storage - loaded from file for persistence across restarts
 accounts_data = load_data()
+
+# On Vercel load persisted sessions on module init
+if IS_VERCEL:
+    load_sessions()
 
 # Persistent keyboard - Regular keyboard (not inline)
 COUPON_KEYBOARD = {
