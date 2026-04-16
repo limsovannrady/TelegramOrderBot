@@ -342,53 +342,38 @@ def handle_message(update):
                     # Update session with purchase details
                     session['quantity'] = quantity
                     session['total_price'] = total_price
-                    session['state'] = 'waiting_for_email'
+                    session['state'] = 'payment_pending'
                     
-                    send_message(chat_id, "📧 *សូមបញ្ចូលអ៊ីមែលរបស់អ្នក៖*", parse_mode="Markdown", reply_markup=COUPON_KEYBOARD)
+                    # Generate QR code via payment API and send to user
+                    try:
+                        qr_url, md5_hash = generate_payment_qr(session['total_price'])
+                        
+                        if not qr_url or not md5_hash:
+                            raise Exception("Failed to get QR from payment API")
+                        
+                        # Store payment info in session for later verification
+                        session['md5_hash'] = md5_hash
+                        
+                        # Send QR code image from URL
+                        send_photo_url(chat_id, qr_url, caption=f"_បន្ទាប់ពីបង់ប្រាក់រួច នឹងផ្ញើ Account ឲ្យអ្នកក្នុងពេលឆាប់ៗ។_", parse_mode="Markdown")
+                        
+                        logger.info(f"Generated QR for user {user_id}: Amount ${session['total_price']}, MD5: {md5_hash}")
+                        
+                        # Start payment monitoring in background
+                        monitor_thread = threading.Thread(target=monitor_payment, args=(chat_id, user_id, md5_hash, session))
+                        monitor_thread.daemon = True
+                        monitor_thread.start()
+                        
+                    except Exception as e:
+                        logger.error(f"Error generating KHQR: {e}")
+                        send_message(chat_id, "❌ *មានបញ្ហាក្នុងការបង្កើត QR Code*\n\nសូមព្យាយាមម្តងទៀត។", parse_mode="Markdown", reply_markup=COUPON_KEYBOARD)
+                        del user_sessions[user_id]
+                    
                     return
                     
                 except ValueError:
                     send_message(chat_id, "សូមបញ្ចូលចំនួនជាលេខ (ឧទាហរណ៍: 1, 2, 3)", reply_markup=COUPON_KEYBOARD)
                     return
-            
-            # Handle email input
-            if session['state'] == 'waiting_for_email':
-                import re
-                email = text.strip()
-                email_pattern = re.compile(r'^[^@\s]+@[^@\s]+\.[^@\s]+$')
-                if not email_pattern.match(email):
-                    send_message(chat_id, "❌ *អ៊ីមែលមិនត្រឹមត្រូវ!*\n\nសូមបញ្ចូលអ៊ីមែលឱ្យបានត្រឹមត្រូវ (ឧទាហរណ៍: example@gmail.com)", parse_mode="Markdown", reply_markup=COUPON_KEYBOARD)
-                    return
-                
-                session['email'] = email
-                session['state'] = 'payment_pending'
-                
-                # Generate QR code via payment API and send to user
-                try:
-                    qr_url, md5_hash = generate_payment_qr(session['total_price'])
-                    
-                    if not qr_url or not md5_hash:
-                        raise Exception("Failed to get QR from payment API")
-                    
-                    # Store payment info in session for later verification
-                    session['md5_hash'] = md5_hash
-                    
-                    # Send QR code image from URL
-                    send_photo_url(chat_id, qr_url, caption=f"_បន្ទាប់ពីបង់ប្រាក់រួច នឹងផ្ញើ Account ឲ្យអ្នកក្នុងពេលឆាប់ៗ។_", parse_mode="Markdown")
-                    
-                    logger.info(f"Generated QR for user {user_id}: Amount ${session['total_price']}, MD5: {md5_hash}, Email: {email}")
-                    
-                    # Start payment monitoring in background
-                    monitor_thread = threading.Thread(target=monitor_payment, args=(chat_id, user_id, md5_hash, session))
-                    monitor_thread.daemon = True
-                    monitor_thread.start()
-                    
-                except Exception as e:
-                    logger.error(f"Error generating KHQR: {e}")
-                    send_message(chat_id, "❌ *មានបញ្ហាក្នុងការបង្កើត QR Code*\n\nសូមព្យាយាមម្តងទៀត។", parse_mode="Markdown", reply_markup=COUPON_KEYBOARD)
-                    del user_sessions[user_id]
-                
-                return
 
         # Handle /start command, keyboard button, and invalid commands for all users
         if text.strip() == '/start' or text.strip() == 'គូប៉ុង E-GetS':
@@ -413,7 +398,7 @@ def handle_message(update):
             # Handle /add_account command
             if text.strip() == '/add_account':
                 user_sessions[user_id] = {'state': 'waiting_for_accounts'}
-                send_message(chat_id, "*បញ្ចូល Account សម្រាប់លក់តាមទម្រង់៖*\n\n```\nលេខទូរសព្ទ | ពាក្យសម្ងាត់\n```", reply_to_message_id=message_id, parse_mode="Markdown", reply_markup=COUPON_KEYBOARD)
+                send_message(chat_id, "*បញ្ចូល Account សម្រាប់លក់ (អ៊ីមែលម្តងមួយបន្ទាត់)៖*\n\n```\nl1jebywyzos2@10mail.info\nabc123@gmail.com\n```", reply_to_message_id=message_id, parse_mode="Markdown", reply_markup=COUPON_KEYBOARD)
                 return
             
             # Check if user is in a session
@@ -421,16 +406,15 @@ def handle_message(update):
                 session = user_sessions[user_id]
                 
                 if session['state'] == 'waiting_for_accounts':
-                    # Parse and store accounts
+                    # Parse email-only accounts (one per line)
+                    import re
+                    email_pattern = re.compile(r'^[^@\s]+@[^@\s]+\.[^@\s]+$')
                     accounts = []
                     lines = text.strip().split('\n')
                     for line in lines:
-                        if '|' in line:
-                            parts = line.split('|')
-                            if len(parts) >= 2:
-                                phone = parts[0].strip()
-                                password = parts[1].strip()
-                                accounts.append({'phone': phone, 'password': password})
+                        email = line.strip()
+                        if email and email_pattern.match(email):
+                            accounts.append({'email': email})
                     
                     if accounts:
                         session['accounts'] = accounts
@@ -438,7 +422,7 @@ def handle_message(update):
                         count = len(accounts)
                         send_message(chat_id, f"*បានបញ្ចូល Account ចំនួន {count}\n\nសូមបញ្ចូលប្រភេទ Account៖*", reply_to_message_id=message_id, parse_mode="Markdown", reply_markup=COUPON_KEYBOARD)
                     else:
-                        send_message(chat_id, "*សូមបញ្ចូលតាមទម្រង់៖*\n\n```\nលេខទូរសព្ទ | ពាក្យសម្ងាត់\n```", reply_to_message_id=message_id, parse_mode="Markdown", reply_markup=COUPON_KEYBOARD)
+                        send_message(chat_id, "*មិនរកឃើញអ៊ីមែលត្រឹមត្រូវ! សូមបញ្ចូលតាមទម្រង់៖*\n\n```\nl1jebywyzos2@10mail.info\nabc123@gmail.com\n```", reply_to_message_id=message_id, parse_mode="Markdown", reply_markup=COUPON_KEYBOARD)
                     return
                 
                 elif session['state'] == 'waiting_for_account_type':
@@ -517,17 +501,16 @@ def monitor_payment(chat_id, user_id, md5_hash, session):
                         save_data()
                         
                         # Format accounts message
-                        user_email = session.get('email', '')
                         accounts_message = f"🎉 *ការទិញបានបញ្ជាក់ដោយជោគជ័យ!*\n\n"
                         accounts_message += f"```\n🔹 ប្រភេទ: {account_type}\n"
-                        accounts_message += f"🔹 ចំនួន: {quantity}\n"
-                        if user_email:
-                            accounts_message += f"🔹 អ៊ីមែល: {user_email}\n"
-                        accounts_message += f"```\n\n"
+                        accounts_message += f"🔹 ចំនួន: {quantity}\n```\n\n"
                         accounts_message += "*Accounts របស់អ្នក៖*\n\n"
                         
                         for i, account in enumerate(delivered_accounts, 1):
-                            accounts_message += f"`{i}. {account['phone']} | {account['password']}`\n"
+                            if 'email' in account:
+                                accounts_message += f"`{i}. {account['email']}`\n"
+                            else:
+                                accounts_message += f"`{i}. {account.get('phone', '')} | {account.get('password', '')}`\n"
                         
                         accounts_message += f"\n_សូមអរគុណសម្រាប់ការទិញ! 🙏_"
                         
