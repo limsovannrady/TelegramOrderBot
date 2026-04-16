@@ -476,7 +476,7 @@ def handle_message(update):
 
 def monitor_payment(chat_id, user_id, md5_hash, session):
     """Monitor payment status and send accounts when payment is confirmed."""
-    max_attempts = 30  # Monitor for 15 minutes (30 attempts x 30 seconds)
+    max_attempts = 6  # Monitor for 3 minutes (6 attempts x 30 seconds)
     attempt = 0
     
     while attempt < max_attempts:
@@ -554,8 +554,13 @@ def monitor_payment(chat_id, user_id, md5_hash, session):
             attempt += 1
             time.sleep(30)
     
-    # Payment monitoring timeout
-    timeout_message = f"⏰ *ការបង់ប្រាក់ហួសពេល*\n\nការទិញរបស់អ្នកត្រូវបានលុបចោលដោយសារហួសពេលកំណត់ (15 នាទី)។\n\nសូមធ្វើការទិញម្តងទៀត។"
+    # Payment monitoring timeout - delete QR code message first
+    qr_message_id = session.get('qr_message_id')
+    if qr_message_id:
+        delete_url = f"{API_URL}/deleteMessage"
+        requests.post(delete_url, data={'chat_id': chat_id, 'message_id': qr_message_id}, timeout=5)
+    
+    timeout_message = f"⏰ *ការបង់ប្រាក់ហួសពេល*\n\nការទិញរបស់អ្នកត្រូវបានលុបចោលដោយស្វ័យប្រវត្តិ ព្រោះហួសពេល *3 នាទី*។\n\nសូមធ្វើការទិញម្តងទៀត។"
     send_message(chat_id, timeout_message, parse_mode="Markdown", reply_markup=COUPON_KEYBOARD)
     
     # Clear session
