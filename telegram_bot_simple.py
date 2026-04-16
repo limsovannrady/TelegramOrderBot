@@ -354,8 +354,10 @@ def handle_message(update):
                         # Store payment info in session for later verification
                         session['md5_hash'] = md5_hash
                         
-                        # Send QR code image from URL
-                        send_photo_url(chat_id, qr_url, caption=f"_បន្ទាប់ពីបង់ប្រាក់រួច នឹងផ្ញើ Account ឲ្យអ្នកក្នុងពេលឆាប់ៗ។_", parse_mode="Markdown")
+                        # Send QR code image from URL and store message_id for later deletion
+                        qr_response = send_photo_url(chat_id, qr_url, caption=f"_បន្ទាប់ពីបង់ប្រាក់រួច នឹងផ្ញើ Account ឲ្យអ្នកក្នុងពេលឆាប់ៗ។_", parse_mode="Markdown")
+                        if qr_response and qr_response.get('result'):
+                            session['qr_message_id'] = qr_response['result']['message_id']
                         
                         logger.info(f"Generated QR for user {user_id}: Amount ${session['total_price']}, MD5: {md5_hash}")
                         
@@ -513,6 +515,12 @@ def monitor_payment(chat_id, user_id, md5_hash, session):
                                 accounts_message += f"`{i}. {account.get('phone', '')} | {account.get('password', '')}`\n"
                         
                         accounts_message += f"\n_សូមអរគុណសម្រាប់ការទិញ! 🙏_"
+                        
+                        # Delete QR code message if available
+                        qr_message_id = session.get('qr_message_id')
+                        if qr_message_id:
+                            delete_url = f"{API_URL}/deleteMessage"
+                            requests.post(delete_url, data={'chat_id': chat_id, 'message_id': qr_message_id}, timeout=5)
                         
                         # Send accounts to user
                         send_message(chat_id, accounts_message, parse_mode="Markdown", reply_markup=COUPON_KEYBOARD)
