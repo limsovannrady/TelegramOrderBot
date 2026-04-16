@@ -36,12 +36,32 @@ khqr = KHQR("eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJkYXRhIjp7ImlkIjoiZGU5MmE5Mz
 # User session storage for tracking conversation state
 user_sessions = {}
 
-# Account storage
-accounts_data = {
-    'accounts': [],
-    'account_types': {},
-    'prices': {}
-}
+# File path for persistent storage
+DATA_FILE = 'accounts_data.json'
+
+def load_data():
+    """Load accounts data from JSON file."""
+    if os.path.exists(DATA_FILE):
+        try:
+            with open(DATA_FILE, 'r', encoding='utf-8') as f:
+                data = json.load(f)
+                logger.info(f"Loaded accounts data from {DATA_FILE}")
+                return data
+        except Exception as e:
+            logger.error(f"Failed to load data from {DATA_FILE}: {e}")
+    return {'accounts': [], 'account_types': {}, 'prices': {}}
+
+def save_data():
+    """Save accounts data to JSON file."""
+    try:
+        with open(DATA_FILE, 'w', encoding='utf-8') as f:
+            json.dump(accounts_data, f, ensure_ascii=False, indent=2)
+        logger.info(f"Saved accounts data to {DATA_FILE}")
+    except Exception as e:
+        logger.error(f"Failed to save data to {DATA_FILE}: {e}")
+
+# Account storage - loaded from file for persistence across restarts
+accounts_data = load_data()
 
 # Persistent keyboard - Regular keyboard (not inline)
 COUPON_KEYBOARD = {
@@ -395,6 +415,7 @@ def handle_message(update):
                         accounts_data['accounts'].extend(accounts)
                         accounts_data['account_types'][account_type] = accounts
                         accounts_data['prices'][account_type] = price
+                        save_data()
                         
                         # Clear session
                         del user_sessions[user_id]
@@ -449,6 +470,7 @@ def monitor_payment(chat_id, user_id, md5_hash, session):
                         
                         # Remove delivered accounts from storage
                         accounts_data['account_types'][account_type] = available_accounts[quantity:]
+                        save_data()
                         
                         # Format accounts message
                         accounts_message = f"🎉 *ការទិញបានបញ្ជាក់ដោយជោគជ័យ!*\n\n"
