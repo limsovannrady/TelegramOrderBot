@@ -342,38 +342,53 @@ def handle_message(update):
                     # Update session with purchase details
                     session['quantity'] = quantity
                     session['total_price'] = total_price
-                    session['state'] = 'payment_pending'
+                    session['state'] = 'waiting_for_email'
                     
-                    # Generate QR code via payment API and send to user
-                    try:
-                        qr_url, md5_hash = generate_payment_qr(session['total_price'])
-                        
-                        if not qr_url or not md5_hash:
-                            raise Exception("Failed to get QR from payment API")
-                        
-                        # Store payment info in session for later verification
-                        session['md5_hash'] = md5_hash
-                        
-                        # Send QR code image from URL
-                        send_photo_url(chat_id, qr_url, caption=f"_បន្ទាប់ពីបង់ប្រាក់រួច នឹងផ្ញើ Account ឲ្យអ្នកក្នុងពេលឆាប់ៗ។_", parse_mode="Markdown")
-                        
-                        logger.info(f"Generated QR for user {user_id}: Amount ${session['total_price']}, MD5: {md5_hash}")
-                        
-                        # Start payment monitoring in background
-                        monitor_thread = threading.Thread(target=monitor_payment, args=(chat_id, user_id, md5_hash, session))
-                        monitor_thread.daemon = True
-                        monitor_thread.start()
-                        
-                    except Exception as e:
-                        logger.error(f"Error generating KHQR: {e}")
-                        send_message(chat_id, "❌ *មានបញ្ហាក្នុងការបង្កើត QR Code*\n\nសូមព្យាយាមម្តងទៀត។", parse_mode="Markdown", reply_markup=COUPON_KEYBOARD)
-                        del user_sessions[user_id]
-                    
+                    send_message(chat_id, "📧 *សូមបញ្ចូលអ៊ីមែលរបស់អ្នក៖*", parse_mode="Markdown", reply_markup=COUPON_KEYBOARD)
                     return
                     
                 except ValueError:
                     send_message(chat_id, "សូមបញ្ចូលចំនួនជាលេខ (ឧទាហរណ៍: 1, 2, 3)", reply_markup=COUPON_KEYBOARD)
                     return
+            
+            # Handle email input
+            if session['state'] == 'waiting_for_email':
+                import re
+                email = text.strip()
+                email_pattern = re.compile(r'^[^@\s]+@[^@\s]+\.[^@\s]+$')
+                if not email_pattern.match(email):
+                    send_message(chat_id, "❌ *អ៊ីមែលមិនត្រឹមត្រូវ!*\n\nសូមបញ្ចូលអ៊ីមែលឱ្យបានត្រឹមត្រូវ (ឧទាហរណ៍: example@gmail.com)", parse_mode="Markdown", reply_markup=COUPON_KEYBOARD)
+                    return
+                
+                session['email'] = email
+                session['state'] = 'payment_pending'
+                
+                # Generate QR code via payment API and send to user
+                try:
+                    qr_url, md5_hash = generate_payment_qr(session['total_price'])
+                    
+                    if not qr_url or not md5_hash:
+                        raise Exception("Failed to get QR from payment API")
+                    
+                    # Store payment info in session for later verification
+                    session['md5_hash'] = md5_hash
+                    
+                    # Send QR code image from URL
+                    send_photo_url(chat_id, qr_url, caption=f"_បន្ទាប់ពីបង់ប្រាក់រួច នឹងផ្ញើ Account ឲ្យអ្នកក្នុងពេលឆាប់ៗ។_", parse_mode="Markdown")
+                    
+                    logger.info(f"Generated QR for user {user_id}: Amount ${session['total_price']}, MD5: {md5_hash}, Email: {email}")
+                    
+                    # Start payment monitoring in background
+                    monitor_thread = threading.Thread(target=monitor_payment, args=(chat_id, user_id, md5_hash, session))
+                    monitor_thread.daemon = True
+                    monitor_thread.start()
+                    
+                except Exception as e:
+                    logger.error(f"Error generating KHQR: {e}")
+                    send_message(chat_id, "❌ *មានបញ្ហាក្នុងការបង្កើត QR Code*\n\nសូមព្យាយាមម្តងទៀត។", parse_mode="Markdown", reply_markup=COUPON_KEYBOARD)
+                    del user_sessions[user_id]
+                
+                return
 
         # Handle /start command, keyboard button, and invalid commands for all users
         if text.strip() == '/start' or text.strip() == 'គូប៉ុង E-GetS':
@@ -502,9 +517,13 @@ def monitor_payment(chat_id, user_id, md5_hash, session):
                         save_data()
                         
                         # Format accounts message
+                        user_email = session.get('email', '')
                         accounts_message = f"🎉 *ការទិញបានបញ្ជាក់ដោយជោគជ័យ!*\n\n"
                         accounts_message += f"```\n🔹 ប្រភេទ: {account_type}\n"
-                        accounts_message += f"🔹 ចំនួន: {quantity}\n```\n\n"
+                        accounts_message += f"🔹 ចំនួន: {quantity}\n"
+                        if user_email:
+                            accounts_message += f"🔹 អ៊ីមែល: {user_email}\n"
+                        accounts_message += f"```\n\n"
                         accounts_message += "*Accounts របស់អ្នក៖*\n\n"
                         
                         for i, account in enumerate(delivered_accounts, 1):
