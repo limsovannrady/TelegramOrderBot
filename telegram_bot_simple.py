@@ -25,7 +25,7 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 # Bot configuration
-BOT_TOKEN = "7512276458:AAHGerJbecGFUyZwXEY24-XtEmGuLvLFS_Y"
+BOT_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN", "")
 KHMER_MESSAGE = "ជ្រើសរើស Account ដើម្បីបញ្ជាទិញ"
 ADMIN_ID = 5002402843
 API_URL = f"https://api.telegram.org/bot{BOT_TOKEN}"
