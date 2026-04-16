@@ -373,38 +373,22 @@ def handle_message(update):
         
         # Function to show account selection interface
         def show_account_selection():
-            # Create inline buttons for available account types
+            # Only show account types that have stock
             inline_buttons = []
-            has_stock = False
             
             for account_type, accounts in accounts_data['account_types'].items():
                 count = len(accounts)
                 if count > 0:
                     button_text = f"ទិញ {account_type} - មានក្នុងស្តុក {count}"
-                    callback_data = f"buy_{account_type}"
-                    inline_buttons.append([{'text': button_text, 'callback_data': callback_data}])
-                    has_stock = True
-                else:
-                    # Show out of stock for this specific type
-                    button_text = f"{account_type} - សូមអភ័យទោស អស់ពីស្តុក 🪤"
-                    callback_data = f"out_of_stock_{account_type}"
-                    inline_buttons.append([{'text': button_text, 'callback_data': callback_data}])
+                    inline_buttons.append([{'text': button_text, 'callback_data': f"buy_{account_type}"}])
             
-            # If no account types exist at all, show general out of stock message
-            if not accounts_data['account_types']:
+            # If no account types available, show out of stock message
+            if not inline_buttons:
                 send_message(chat_id, "_សូមអភ័យទោស អស់ពីស្តុក 🪤_", parse_mode="Markdown", reply_markup=COUPON_KEYBOARD)
                 return
             
-            # Create inline keyboard markup
-            inline_keyboard = {'inline_keyboard': inline_buttons}
-            
-            # Send message with inline buttons
-            if has_stock:
-                purchase_message = "សូមជ្រើសរើស Account ដើម្បីទិញ៖"
-            else:
-                purchase_message = "បញ្ជី Account (អស់ស្តុកទាំងអស់)៖"
-            
-            send_message(chat_id, purchase_message, reply_markup=inline_keyboard)
+            send_message(chat_id, "សូមជ្រើសរើស Account ដើម្បីទិញ៖",
+                         reply_markup={'inline_keyboard': inline_buttons})
         
         # Check if user is in a purchase session (for all users including admin)
         if user_id in user_sessions:
