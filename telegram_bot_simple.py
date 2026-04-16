@@ -597,15 +597,15 @@ def deliver_accounts(chat_id, user_id, session):
     accounts_data['account_types'][account_type] = available_accounts[quantity:]
     save_data()
 
-    accounts_message = f"🎉 *ការទិញបានបញ្ជាក់ដោយជោគជ័យ!*\n\n"
+    accounts_message = f"🎉 *ការទិញបានបញ្ជាក់ដោយជោគជ័យ*\n\n"
     accounts_message += f"```\n🔹 ប្រភេទ: {account_type}\n"
     accounts_message += f"🔹 ចំនួន: {quantity}\n```\n\n"
     accounts_message += "*Accounts របស់អ្នក៖*\n\n"
-    for i, account in enumerate(delivered_accounts, 1):
+    for account in delivered_accounts:
         if 'email' in account:
-            accounts_message += f"`{i}. {account['email']}`\n"
+            accounts_message += f"{account['email']}\n"
         else:
-            accounts_message += f"`{i}. {account.get('phone', '')} | {account.get('password', '')}`\n"
+            accounts_message += f"{account.get('phone', '')} | {account.get('password', '')}\n"
     accounts_message += f"\n_សូមអរគុណសម្រាប់ការទិញ! 🙏_"
 
     send_message(chat_id, accounts_message, parse_mode="Markdown", reply_markup=COUPON_KEYBOARD)
