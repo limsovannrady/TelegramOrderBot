@@ -6,11 +6,8 @@ import time
 import logging
 import sys
 import json
-import random
 import os
 import threading
-from bakong_khqr import KHQR
-import qrcode
 
 # Configure logging
 logging.basicConfig(
@@ -30,8 +27,42 @@ KHMER_MESSAGE = "ជ្រើសរើស Account ដើម្បីបញ្ជ
 ADMIN_ID = 5002402843
 API_URL = f"https://api.telegram.org/bot{BOT_TOKEN}"
 
-# Initialize KHQR with Bakong Developer Token
-khqr = KHQR("eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJkYXRhIjp7ImlkIjoiZGU5MmE5MzZiZTdhNDdhNyJ9LCJpYXQiOjE3NTM1MzQxMTEsImV4cCI6MTc2MTMxMDExMX0.xQlYk4GB8iLx62Lat6E1ep0gM5FHUI5Yf2486_Q9W6A")
+# Payment API configuration
+PAYMENT_API_URL = "https://bakong.cambo-kh.com/api/payment"
+PAYMENT_USER_TG_ID = "5002402843"
+
+def generate_payment_qr(amount):
+    """Generate QR code via payment API. Returns (qr_url, md5) or (None, None) on failure."""
+    try:
+        response = requests.get(PAYMENT_API_URL, params={
+            'type': 'generate_qr',
+            'user_tg_id': PAYMENT_USER_TG_ID,
+            'amount': amount
+        }, timeout=15)
+        response.raise_for_status()
+        data = response.json()
+        if data.get('status') == 'success':
+            qr_url = data['data']['Url_qr_code']
+            md5 = data['data']['md5']
+            return qr_url, md5
+    except Exception as e:
+        logger.error(f"Failed to generate payment QR: {e}")
+    return None, None
+
+def check_payment_status(md5):
+    """Check payment status via API. Returns True if paid, False otherwise."""
+    try:
+        response = requests.get(PAYMENT_API_URL, params={
+            'type': 'check_md5',
+            'user_tg_id': PAYMENT_USER_TG_ID,
+            'md5': md5
+        }, timeout=15)
+        response.raise_for_status()
+        data = response.json()
+        return data.get('status') == 'success'
+    except Exception as e:
+        logger.error(f"Failed to check payment status: {e}")
+    return False
 
 # User session storage for tracking conversation state
 user_sessions = {}
@@ -121,6 +152,27 @@ def send_photo(chat_id, photo_path, caption=None, parse_mode=None, reply_markup=
             return response.json()
     except requests.RequestException as e:
         logger.error(f"Failed to send photo: {e}")
+        return None
+
+def send_photo_url(chat_id, photo_url, caption=None, parse_mode=None, reply_markup=None):
+    """Send a photo from a URL to a specific chat."""
+    url = f"{API_URL}/sendPhoto"
+    data = {
+        'chat_id': chat_id,
+        'photo': photo_url
+    }
+    if caption:
+        data['caption'] = caption
+    if parse_mode:
+        data['parse_mode'] = parse_mode
+    if reply_markup:
+        data['reply_markup'] = json.dumps(reply_markup)
+    try:
+        response = requests.post(url, data=data, timeout=10)
+        response.raise_for_status()
+        return response.json()
+    except requests.RequestException as e:
+        logger.error(f"Failed to send photo URL: {e}")
         return None
 
 def get_updates(offset=None):
@@ -292,48 +344,20 @@ def handle_message(update):
                     session['total_price'] = total_price
                     session['state'] = 'payment_pending'
                     
-                    # Directly generate KHQR and send QR code
+                    # Generate QR code via payment API and send to user
                     try:
-                        # Generate unique bill number using timestamp and user ID
-                        bill_number = f"TRX{int(time.time())}{random.randint(100, 999)}"
+                        qr_url, md5_hash = generate_payment_qr(session['total_price'])
                         
-                        # Generate KHQR for payment
-                        qr_data = khqr.create_qr(
-                            bank_account='sovannrady@aclb',
-                            merchant_name='E-GetS Top Up',
-                            merchant_city='កំពង់សោម។',
-                            amount=session['total_price'],
-                            currency='USD',
-                            store_label='គូប៉ុង E-GetS',
-                            phone_number='85593330905',
-                            bill_number=bill_number,
-                            terminal_label='Cashier-01',
-                            static=False
-                        )
-                        
-                        # Generate MD5 hash for payment verification
-                        md5_hash = khqr.generate_md5(qr_data)
+                        if not qr_url or not md5_hash:
+                            raise Exception("Failed to get QR from payment API")
                         
                         # Store payment info in session for later verification
-                        session['qr_data'] = qr_data
                         session['md5_hash'] = md5_hash
-                        session['bill_number'] = bill_number
                         
-                        # Generate QR code image using qrcode library
-                        qr_image = qrcode.make(qr_data)
-                        qr_filename = f"qr_{bill_number}.png"
-                        qr_image.save(qr_filename)
+                        # Send QR code image from URL
+                        send_photo_url(chat_id, qr_url, caption=f"_បន្ទាប់ពីបង់ប្រាក់រួច នឹងផ្ញើ Account ឲ្យអ្នកក្នុងពេលឆាប់ៗ។_", parse_mode="Markdown")
                         
-                        # Send QR code image directly
-                        send_photo(chat_id, qr_filename, caption=f"_បន្ទាប់ពីបង់ប្រាក់រួច នឹងផ្ញើ Account ឲ្យអ្នកក្នុងពេលឆាប់ៗ។_", parse_mode="Markdown")
-                        
-                        # Clean up temporary file
-                        try:
-                            os.remove(qr_filename)
-                        except:
-                            pass
-                        
-                        logger.info(f"Generated KHQR for user {user_id}: Bill {bill_number}, Amount ${session['total_price']}, MD5: {md5_hash}")
+                        logger.info(f"Generated QR for user {user_id}: Amount ${session['total_price']}, MD5: {md5_hash}")
                         
                         # Start payment monitoring in background
                         monitor_thread = threading.Thread(target=monitor_payment, args=(chat_id, user_id, md5_hash, session))
@@ -456,11 +480,11 @@ def monitor_payment(chat_id, user_id, md5_hash, session):
     
     while attempt < max_attempts:
         try:
-            # Check payment status using KHQR
-            payment_status = khqr.check_payment(md5_hash)
-            logger.info(f"Payment check attempt {attempt + 1} for user {user_id}: {payment_status}")
+            # Check payment status using payment API
+            is_paid = check_payment_status(md5_hash)
+            logger.info(f"Payment check attempt {attempt + 1} for user {user_id}: {'PAID' if is_paid else 'UNPAID'}")
             
-            if payment_status == "PAID":
+            if is_paid:
                 # Payment confirmed, send accounts
                 account_type = session['account_type']
                 quantity = session['quantity']
@@ -480,8 +504,7 @@ def monitor_payment(chat_id, user_id, md5_hash, session):
                         # Format accounts message
                         accounts_message = f"🎉 *ការទិញបានបញ្ជាក់ដោយជោគជ័យ!*\n\n"
                         accounts_message += f"```\n🔹 ប្រភេទ: {account_type}\n"
-                        accounts_message += f"🔹 ចំនួន: {quantity}\n"
-                        accounts_message += f"🔹 លេខ Transaction: {session['bill_number']}\n```\n\n"
+                        accounts_message += f"🔹 ចំនួន: {quantity}\n```\n\n"
                         accounts_message += "*Accounts របស់អ្នក៖*\n\n"
                         
                         for i, account in enumerate(delivered_accounts, 1):
@@ -511,15 +534,10 @@ def monitor_payment(chat_id, user_id, md5_hash, session):
                     logger.error(f"Account type {account_type} not found for user {user_id}")
                     return
             
-            elif payment_status == "UNPAID":
+            else:
                 # Still waiting for payment
                 attempt += 1
                 time.sleep(30)  # Check every 30 seconds
-            else:
-                # Unknown status
-                logger.warning(f"Unknown payment status for user {user_id}: {payment_status}")
-                attempt += 1
-                time.sleep(30)
                 
         except Exception as e:
             logger.error(f"Error monitoring payment for user {user_id}: {e}")
