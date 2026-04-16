@@ -7,7 +7,6 @@ import logging
 import sys
 import json
 import os
-import threading
 
 # Detect Vercel environment - use /tmp for writable storage
 IS_VERCEL = os.environ.get('VERCEL') == '1'
@@ -287,12 +286,64 @@ def handle_callback_query(update):
             account_type = callback_data.replace('out_of_stock_', '')
             send_message(chat_id, f"សូមអភ័យទោស Account {account_type} អស់ពីស្តុក 🪤", reply_markup=COUPON_KEYBOARD)
         
-        # Handle cancel purchase (though this is no longer used since we skip confirmation)
+        # Handle check payment button
+        elif callback_data == 'check_payment':
+            if IS_VERCEL:
+                load_sessions()
+            session = user_sessions.get(user_id)
+            if not session or session.get('state') != 'payment_pending':
+                requests.post(f"{API_URL}/answerCallbackQuery",
+                              data={'callback_query_id': callback_query['id'],
+                                    'text': 'មិនមានការទិញដែលកំពុងរង់ចាំ។', 'show_alert': True}, timeout=5)
+                return
+
+            # Check 3-minute timeout
+            elapsed = time.time() - session.get('qr_sent_at', time.time())
+            if elapsed > PAYMENT_TIMEOUT:
+                qr_message_id = session.get('qr_message_id')
+                if qr_message_id:
+                    requests.post(f"{API_URL}/deleteMessage",
+                                  data={'chat_id': chat_id, 'message_id': qr_message_id}, timeout=5)
+                del user_sessions[user_id]
+                if IS_VERCEL:
+                    save_sessions()
+                send_message(chat_id,
+                             "⏰ *ការបង់ប្រាក់ហួសពេល*\n\nការទិញត្រូវបានលុបចោលដោយស្វ័យប្រវត្តិ ព្រោះហួសពេល *3 នាទី*។\n\nសូមធ្វើការទិញម្តងទៀត។",
+                             parse_mode="Markdown", reply_markup=COUPON_KEYBOARD)
+                requests.post(f"{API_URL}/answerCallbackQuery",
+                              data={'callback_query_id': callback_query['id']}, timeout=5)
+                return
+
+            # Check payment status instantly
+            is_paid = check_payment_status(session['md5_hash'])
+            if is_paid:
+                requests.post(f"{API_URL}/answerCallbackQuery",
+                              data={'callback_query_id': callback_query['id'],
+                                    'text': '✅ ការបង់ប្រាក់បានបញ្ជាក់!'}, timeout=5)
+                deliver_accounts(chat_id, user_id, session)
+                if IS_VERCEL:
+                    save_sessions()
+            else:
+                remaining = int((PAYMENT_TIMEOUT - elapsed) / 60)
+                requests.post(f"{API_URL}/answerCallbackQuery",
+                              data={'callback_query_id': callback_query['id'],
+                                    'text': f'⏳ មិនទាន់បានទទួលការបង់ប្រាក់ (នៅសល់ ~{remaining} នាទី)។',
+                                    'show_alert': True}, timeout=5)
+            return
+
+        # Handle cancel purchase
         elif callback_data == 'cancel_purchase':
+            session = user_sessions.get(user_id)
+            qr_message_id = session.get('qr_message_id') if session else None
+            if qr_message_id:
+                requests.post(f"{API_URL}/deleteMessage",
+                              data={'chat_id': chat_id, 'message_id': qr_message_id}, timeout=5)
             if user_id in user_sessions:
                 del user_sessions[user_id]
+            if IS_VERCEL:
+                save_sessions()
             send_message(chat_id, "🚫 *បានបោះបង់ការទិញ*", parse_mode="Markdown", reply_markup=COUPON_KEYBOARD)
-            
+
         # Answer callback query to remove loading state
         answer_url = f"{API_URL}/answerCallbackQuery"
         requests.post(answer_url, data={'callback_query_id': callback_query['id']}, timeout=5)
@@ -388,18 +439,19 @@ def handle_message(update):
                         
                         # Store payment info in session for later verification
                         session['md5_hash'] = md5_hash
+                        session['qr_sent_at'] = time.time()
                         
-                        # Send QR code image from URL and store message_id for later deletion
-                        qr_response = send_photo_url(chat_id, qr_url, caption=f"_បន្ទាប់ពីបង់ប្រាក់រួច នឹងផ្ញើ Account ឲ្យអ្នកក្នុងពេលឆាប់ៗ។_", parse_mode="Markdown")
+                        # Send QR code image with check-payment button
+                        qr_response = send_photo_url(
+                            chat_id, qr_url,
+                            caption=f"_បន្ទាប់ពីបង់ប្រាក់រួច សូមចុចប៊ូតុង ✅ ពិនិត្យការបង់ប្រាក់។_",
+                            parse_mode="Markdown",
+                            reply_markup=CHECK_PAYMENT_KEYBOARD
+                        )
                         if qr_response and qr_response.get('result'):
                             session['qr_message_id'] = qr_response['result']['message_id']
                         
                         logger.info(f"Generated QR for user {user_id}: Amount ${session['total_price']}, MD5: {md5_hash}")
-                        
-                        # Start payment monitoring in background
-                        monitor_thread = threading.Thread(target=monitor_payment, args=(chat_id, user_id, md5_hash, session))
-                        monitor_thread.daemon = True
-                        monitor_thread.start()
                         
                     except Exception as e:
                         logger.error(f"Error generating KHQR: {e}")
@@ -509,100 +561,59 @@ def handle_message(update):
     except Exception as e:
         logger.error(f"Error handling message: {e}")
 
-def monitor_payment(chat_id, user_id, md5_hash, session):
-    """Monitor payment status and send accounts when payment is confirmed."""
-    max_attempts = 6  # Monitor for 3 minutes (6 attempts x 30 seconds)
-    attempt = 0
-    
-    while attempt < max_attempts:
-        try:
-            # Check payment status using payment API
-            is_paid = check_payment_status(md5_hash)
-            logger.info(f"Payment check attempt {attempt + 1} for user {user_id}: {'PAID' if is_paid else 'UNPAID'}")
-            
-            if is_paid:
-                # Payment confirmed, send accounts
-                account_type = session['account_type']
-                quantity = session['quantity']
-                
-                # Get accounts from storage
-                if account_type in accounts_data['account_types']:
-                    available_accounts = accounts_data['account_types'][account_type]
-                    
-                    if len(available_accounts) >= quantity:
-                        # Take the required number of accounts
-                        delivered_accounts = available_accounts[:quantity]
-                        
-                        # Remove delivered accounts from storage
-                        accounts_data['account_types'][account_type] = available_accounts[quantity:]
-                        save_data()
-                        
-                        # Format accounts message
-                        accounts_message = f"🎉 *ការទិញបានបញ្ជាក់ដោយជោគជ័យ!*\n\n"
-                        accounts_message += f"```\n🔹 ប្រភេទ: {account_type}\n"
-                        accounts_message += f"🔹 ចំនួន: {quantity}\n```\n\n"
-                        accounts_message += "*Accounts របស់អ្នក៖*\n\n"
-                        
-                        for i, account in enumerate(delivered_accounts, 1):
-                            if 'email' in account:
-                                accounts_message += f"`{i}. {account['email']}`\n"
-                            else:
-                                accounts_message += f"`{i}. {account.get('phone', '')} | {account.get('password', '')}`\n"
-                        
-                        accounts_message += f"\n_សូមអរគុណសម្រាប់ការទិញ! 🙏_"
-                        
-                        # Delete QR code message if available
-                        qr_message_id = session.get('qr_message_id')
-                        if qr_message_id:
-                            delete_url = f"{API_URL}/deleteMessage"
-                            requests.post(delete_url, data={'chat_id': chat_id, 'message_id': qr_message_id}, timeout=5)
-                        
-                        # Send accounts to user
-                        send_message(chat_id, accounts_message, parse_mode="Markdown", reply_markup=COUPON_KEYBOARD)
-                        
-                        # Clear user session
-                        if user_id in user_sessions:
-                            del user_sessions[user_id]
-                        
-                        logger.info(f"Payment confirmed and {quantity} accounts delivered to user {user_id}")
-                        return
-                    else:
-                        # Not enough accounts available
-                        error_message = f"❌ *មានបញ្ហា!*\n\nសុំទោស! មានត្រឹមតែ {len(available_accounts)} Accounts នៅក្នុងស្តុក។"
-                        send_message(chat_id, error_message, parse_mode="Markdown", reply_markup=COUPON_KEYBOARD)
-                        logger.error(f"Insufficient accounts for user {user_id}: requested {quantity}, available {len(available_accounts)}")
-                        return
-                else:
-                    # Account type not found
-                    error_message = f"❌ *មានបញ្ហា!*\n\nគ្មាន Account ប្រភេទ {account_type} ក្នុងស្តុក។"
-                    send_message(chat_id, error_message, parse_mode="Markdown", reply_markup=COUPON_KEYBOARD)
-                    logger.error(f"Account type {account_type} not found for user {user_id}")
-                    return
-            
-            else:
-                # Still waiting for payment
-                attempt += 1
-                time.sleep(30)  # Check every 30 seconds
-                
-        except Exception as e:
-            logger.error(f"Error monitoring payment for user {user_id}: {e}")
-            attempt += 1
-            time.sleep(30)
-    
-    # Payment monitoring timeout - delete QR code message first
+PAYMENT_TIMEOUT = 3 * 60  # 3 minutes in seconds
+
+CHECK_PAYMENT_KEYBOARD = {
+    'inline_keyboard': [
+        [{'text': '✅ ពិនិត្យការបង់ប្រាក់', 'callback_data': 'check_payment'}],
+        [{'text': '🚫 បោះបង់', 'callback_data': 'cancel_purchase'}]
+    ]
+}
+
+def deliver_accounts(chat_id, user_id, session):
+    """Deliver purchased accounts to user after confirmed payment."""
+    account_type = session['account_type']
+    quantity = session['quantity']
+
+    # Delete QR code message
     qr_message_id = session.get('qr_message_id')
     if qr_message_id:
-        delete_url = f"{API_URL}/deleteMessage"
-        requests.post(delete_url, data={'chat_id': chat_id, 'message_id': qr_message_id}, timeout=5)
-    
-    timeout_message = f"⏰ *ការបង់ប្រាក់ហួសពេល*\n\nការទិញរបស់អ្នកត្រូវបានលុបចោលដោយស្វ័យប្រវត្តិ ព្រោះហួសពេល *3 នាទី*។\n\nសូមធ្វើការទិញម្តងទៀត។"
-    send_message(chat_id, timeout_message, parse_mode="Markdown", reply_markup=COUPON_KEYBOARD)
-    
-    # Clear session
+        requests.post(f"{API_URL}/deleteMessage",
+                      data={'chat_id': chat_id, 'message_id': qr_message_id}, timeout=5)
+
+    if account_type not in accounts_data['account_types']:
+        send_message(chat_id, f"❌ *មានបញ្ហា!*\n\nគ្មាន Account ប្រភេទ {account_type} ក្នុងស្តុក។",
+                     parse_mode="Markdown", reply_markup=COUPON_KEYBOARD)
+        return
+
+    available_accounts = accounts_data['account_types'][account_type]
+    if len(available_accounts) < quantity:
+        send_message(chat_id,
+                     f"❌ *មានបញ្ហា!*\n\nសុំទោស! មានត្រឹមតែ {len(available_accounts)} Accounts នៅក្នុងស្តុក។",
+                     parse_mode="Markdown", reply_markup=COUPON_KEYBOARD)
+        return
+
+    delivered_accounts = available_accounts[:quantity]
+    accounts_data['account_types'][account_type] = available_accounts[quantity:]
+    save_data()
+
+    accounts_message = f"🎉 *ការទិញបានបញ្ជាក់ដោយជោគជ័យ!*\n\n"
+    accounts_message += f"```\n🔹 ប្រភេទ: {account_type}\n"
+    accounts_message += f"🔹 ចំនួន: {quantity}\n```\n\n"
+    accounts_message += "*Accounts របស់អ្នក៖*\n\n"
+    for i, account in enumerate(delivered_accounts, 1):
+        if 'email' in account:
+            accounts_message += f"`{i}. {account['email']}`\n"
+        else:
+            accounts_message += f"`{i}. {account.get('phone', '')} | {account.get('password', '')}`\n"
+    accounts_message += f"\n_សូមអរគុណសម្រាប់ការទិញ! 🙏_"
+
+    send_message(chat_id, accounts_message, parse_mode="Markdown", reply_markup=COUPON_KEYBOARD)
+
     if user_id in user_sessions:
         del user_sessions[user_id]
-    
-    logger.info(f"Payment monitoring timeout for user {user_id}")
+
+    logger.info(f"Payment confirmed and {quantity} accounts delivered to user {user_id}")
 
 def main():
     """Main bot loop."""
