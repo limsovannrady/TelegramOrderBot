@@ -72,14 +72,59 @@ def check_payment_status(md5):
 DATA_FILE = os.path.join(DATA_DIR, 'accounts_data.json')
 SESSIONS_FILE = os.path.join(DATA_DIR, 'sessions.json')
 
+TG_STORAGE_MARKER = "📦BOT_STORAGE📦\n"
+
+def _tg_load():
+    """Load data from pinned message in admin's chat (Telegram as storage)."""
+    try:
+        resp = requests.get(
+            f"https://api.telegram.org/bot{os.environ.get('TELEGRAM_BOT_TOKEN', '')}/getChat",
+            params={'chat_id': ADMIN_ID}, timeout=10
+        )
+        result = resp.json().get('result', {})
+        pinned = result.get('pinned_message')
+        if pinned:
+            text = pinned.get('text', '')
+            if text.startswith(TG_STORAGE_MARKER):
+                data = json.loads(text[len(TG_STORAGE_MARKER):])
+                logger.info("Loaded data from Telegram pinned message storage")
+                return data
+    except Exception as e:
+        logger.error(f"Failed to load from Telegram storage: {e}")
+    return None
+
+def _tg_save():
+    """Save data as pinned message in admin's chat (Telegram as storage)."""
+    try:
+        token = os.environ.get('TELEGRAM_BOT_TOKEN', '')
+        base = f"https://api.telegram.org/bot{token}"
+        text = TG_STORAGE_MARKER + json.dumps(accounts_data, ensure_ascii=False, separators=(',', ':'))
+        if len(text) > 4096:
+            logger.warning("Data too large for Telegram text storage, truncation risk")
+        msg_resp = requests.post(f"{base}/sendMessage",
+                                 data={'chat_id': ADMIN_ID, 'text': text}, timeout=10)
+        msg_data = msg_resp.json()
+        if msg_data.get('ok'):
+            msg_id = msg_data['result']['message_id']
+            requests.post(f"{base}/pinChatMessage",
+                          data={'chat_id': ADMIN_ID, 'message_id': msg_id,
+                                'disable_notification': True}, timeout=10)
+            logger.info(f"Saved data to Telegram storage (message {msg_id})")
+    except Exception as e:
+        logger.error(f"Failed to save to Telegram storage: {e}")
+
 def load_data():
-    """Load accounts data from JSON file."""
-    # On Vercel, seed /tmp from bundled file if not yet copied
-    if IS_VERCEL and not os.path.exists(DATA_FILE):
-        src = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'accounts_data.json')
-        if os.path.exists(src):
-            import shutil
-            shutil.copy(src, DATA_FILE)
+    """Load accounts data — Telegram storage on Vercel, file otherwise."""
+    if IS_VERCEL:
+        tg_data = _tg_load()
+        if tg_data:
+            # Also write to /tmp so within-instance calls are fast
+            try:
+                with open(DATA_FILE, 'w', encoding='utf-8') as f:
+                    json.dump(tg_data, f, ensure_ascii=False)
+            except Exception:
+                pass
+            return tg_data
     if os.path.exists(DATA_FILE):
         try:
             with open(DATA_FILE, 'r', encoding='utf-8') as f:
@@ -87,17 +132,19 @@ def load_data():
                 logger.info(f"Loaded accounts data from {DATA_FILE}")
                 return data
         except Exception as e:
-            logger.error(f"Failed to load data from {DATA_FILE}: {e}")
+            logger.error(f"Failed to load data: {e}")
     return {'accounts': [], 'account_types': {}, 'prices': {}}
 
 def save_data():
-    """Save accounts data to JSON file."""
+    """Save accounts data — both file and Telegram storage on Vercel."""
     try:
         with open(DATA_FILE, 'w', encoding='utf-8') as f:
             json.dump(accounts_data, f, ensure_ascii=False, indent=2)
         logger.info(f"Saved accounts data to {DATA_FILE}")
     except Exception as e:
-        logger.error(f"Failed to save data to {DATA_FILE}: {e}")
+        logger.error(f"Failed to save data to file: {e}")
+    if IS_VERCEL:
+        _tg_save()
 
 def load_sessions():
     """Load user sessions from file (needed for Vercel stateless env)."""

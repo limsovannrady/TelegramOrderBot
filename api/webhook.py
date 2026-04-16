@@ -18,11 +18,12 @@ class handler(BaseHTTPRequestHandler):
             body = self.rfile.read(content_length)
             update = json.loads(body)
             logger.info(f"Received webhook update: {update.get('update_id')}")
-            # Reload latest sessions and data before handling
+            # Always reload latest data and sessions from Telegram storage on each request
+            fresh_data = bot.load_data()
+            bot.accounts_data.clear()
+            bot.accounts_data.update(fresh_data)
             bot.load_sessions()
-            bot.accounts_data.update(bot.load_data())
             bot.handle_message(update)
-            # Persist sessions after handling
             bot.save_sessions()
         except Exception as e:
             logger.error(f"Webhook error: {e}")
