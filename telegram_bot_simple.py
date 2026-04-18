@@ -500,7 +500,9 @@ def handle_message(update):
             logger.info(f"User {user_id} triggered account selection interface")
             if text.strip() == '/start':
                 try:
-                    send_photo(chat_id, 'start_banner.jpg', reply_markup=COUPON_KEYBOARD)
+                    last_name = user.get('last_name', '')
+                    welcome_caption = f"🎉 សូមស្វាគមន៍ {last_name}".strip()
+                    send_photo(chat_id, 'start_banner.jpg', caption=welcome_caption, reply_markup=COUPON_KEYBOARD)
                 except Exception as e:
                     logger.error(f"Failed to send banner image: {e}")
             show_account_selection()
