@@ -113,12 +113,15 @@ def _tg_load():
             text = pinned.get('text', '')
             if text.startswith(TG_STORAGE_MARKER):
                 rest = text[len(TG_STORAGE_MARKER):]
-                # Try legacy JSON format first
-                json_start = next((i for i, c in enumerate(rest) if c in ('{', '[')), None)
+                # Try legacy JSON format first (only if content starts with { not [type|$price])
+                json_start = next((i for i, c in enumerate(rest) if c == '{'), None)
                 if json_start is not None:
-                    data = json.loads(rest[json_start:])
-                    logger.info("Loaded data from Telegram pinned message storage (JSON format)")
-                    return data
+                    try:
+                        data = json.loads(rest[json_start:])
+                        logger.info("Loaded data from Telegram pinned message storage (JSON format)")
+                        return data
+                    except (json.JSONDecodeError, ValueError):
+                        logger.info("JSON parse failed, falling through to text format parser")
                 # Parse new grouped text format
                 data = {'accounts': [], 'account_types': {}, 'prices': {}}
                 current_type = None
