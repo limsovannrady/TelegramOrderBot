@@ -80,7 +80,7 @@ The architecture avoids complex library dependencies and ensures reliable operat
 - **Standard Library**: `logging`, `time`, `json`, `sys` for core functionality
 
 ### Bot Configuration
-- `BOT_TOKEN`: Telegram bot authentication token (7512276458:AAHGerJbecGFUyZwXEY24-XtEmGuLvLFS_Y)
+- `BOT_TOKEN`: Telegram bot authentication token (stored securely as `TELEGRAM_BOT_TOKEN` secret)
 - `BOT_USERNAME`: @Coupon2025_Robot
 - `KHMER_MESSAGE`: "ជ្រើសរើស Account ដើម្បីបញ្ជាទិញ"
 
