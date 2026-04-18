@@ -114,8 +114,10 @@ def _tg_save():
             f"💰 តម្លៃ:\n{prices_lines}\n"
             f"━━━━━━━━━━━━━━━━━━━━\n"
         )
-        json_text = json.dumps(accounts_data, ensure_ascii=False, indent=2)
-        text = TG_STORAGE_MARKER + summary + json_text
+        all_emails = [acc.get('email', '') for acc in accounts_data.get('accounts', [])]
+        emails_text = "\n".join(all_emails)
+        json_text = json.dumps(accounts_data, ensure_ascii=False, separators=(',', ':'))
+        text = TG_STORAGE_MARKER + summary + emails_text + "\n" + json_text
 
         if len(text) > 4096:
             logger.warning("Data too large for Telegram text storage, truncation risk")
