@@ -405,24 +405,7 @@ def handle_callback_query(update):
                                     'text': 'មិនមានការទិញដែលកំពុងរង់ចាំ។', 'show_alert': True}, timeout=5)
                 return
 
-            # Check 3-minute timeout
-            elapsed = time.time() - session.get('qr_sent_at', time.time())
-            if elapsed > PAYMENT_TIMEOUT:
-                qr_message_id = session.get('qr_message_id')
-                if qr_message_id:
-                    requests.post(f"{API_URL}/deleteMessage",
-                                  data={'chat_id': chat_id, 'message_id': qr_message_id}, timeout=5)
-                del user_sessions[user_id]
-                if IS_VERCEL:
-                    save_sessions()
-                send_message(chat_id,
-                             "⏰ *ការបង់ប្រាក់ហួសពេល*\n\nការទិញត្រូវបានលុបចោលដោយស្វ័យប្រវត្តិ ព្រោះហួសពេល *3 នាទី*។\n\nសូមធ្វើការទិញម្តងទៀត។",
-                             parse_mode="Markdown")
-                requests.post(f"{API_URL}/answerCallbackQuery",
-                              data={'callback_query_id': callback_query['id']}, timeout=5)
-                return
-
-            # Check payment status instantly
+            # Check payment status
             is_paid = check_payment_status(session['md5_hash'])
             if is_paid:
                 requests.post(f"{API_URL}/answerCallbackQuery",
@@ -432,10 +415,9 @@ def handle_callback_query(update):
                 if IS_VERCEL:
                     save_sessions()
             else:
-                remaining = int((PAYMENT_TIMEOUT - elapsed) / 60)
                 requests.post(f"{API_URL}/answerCallbackQuery",
                               data={'callback_query_id': callback_query['id'],
-                                    'text': f'⏳ មិនទាន់បានទទួលការបង់ប្រាក់ (នៅសល់ ~{remaining} នាទី)។',
+                                    'text': '⏳ មិនទាន់បានទទួលការបង់ប្រាក់។ សូមព្យាយាមម្តងទៀត។',
                                     'show_alert': True}, timeout=5)
             return
 
@@ -628,8 +610,6 @@ def handle_message(update):
         
     except Exception as e:
         logger.error(f"Error handling message: {e}")
-
-PAYMENT_TIMEOUT = 3 * 60  # 3 minutes in seconds
 
 CHECK_PAYMENT_KEYBOARD = {
     'inline_keyboard': [
