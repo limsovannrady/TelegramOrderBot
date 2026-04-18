@@ -7,7 +7,6 @@ import logging
 import sys
 import json
 import os
-import hashlib
 from bakong_khqr import KHQR
 
 # Detect Vercel environment - use /tmp for writable storage
@@ -33,9 +32,8 @@ KHMER_MESSAGE = "ជ្រើសរើស Account ដើម្បីបញ្ជ
 ADMIN_ID = 5002402843
 API_URL = f"https://api.telegram.org/bot{BOT_TOKEN}"
 
-# Bakong KHQR configuration
-BAKONG_TOKEN = "rbkw4Br39sRdp4ddKeIr_YrHkL5y7AvMtjgKyr-w0PuhgM"
-BAKONG_RELAY_URL = "https://www.bakongrelay.com"
+# Bakong KHQR configuration — token loaded from secret
+BAKONG_TOKEN = os.environ.get("BAKONG_TOKEN", "")
 khqr_client = KHQR(BAKONG_TOKEN)
 
 def generate_payment_qr(amount):
@@ -56,7 +54,7 @@ def generate_payment_qr(amount):
             expiration=1
         )
         png_path = khqr_client.qr_image(qr)
-        md5 = hashlib.md5(qr.encode()).hexdigest()
+        md5 = khqr_client.generate_md5(qr)
         logger.info(f"Generated KHQR for amount ${amount}, bill {bill_number}, md5 {md5}")
         return png_path, md5
     except Exception as e:
@@ -64,20 +62,10 @@ def generate_payment_qr(amount):
     return None, None
 
 def check_payment_status(md5):
-    """Check payment status via bakongrelay.com. Returns True if paid, False otherwise."""
+    """Check payment via bakong-khqr library (auto-routes to bakongrelay.com for rbk tokens)."""
     try:
-        response = requests.post(
-            f"{BAKONG_RELAY_URL}/api/v1/check-transaction-by-md5",
-            json={'md5': md5},
-            headers={
-                'Authorization': f'Bearer {BAKONG_TOKEN}',
-                'Content-Type': 'application/json'
-            },
-            timeout=15
-        )
-        response.raise_for_status()
-        data = response.json()
-        return data.get('responseCode') == 0
+        result = khqr_client.check_payment(md5)
+        return result == "PAID"
     except Exception as e:
         logger.error(f"Failed to check payment status: {e}")
     return False
