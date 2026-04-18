@@ -87,10 +87,45 @@ def _tg_load():
             text = pinned.get('text', '')
             if text.startswith(TG_STORAGE_MARKER):
                 rest = text[len(TG_STORAGE_MARKER):]
+                # Try legacy JSON format first
                 json_start = next((i for i, c in enumerate(rest) if c in ('{', '[')), None)
                 if json_start is not None:
                     data = json.loads(rest[json_start:])
-                    logger.info("Loaded data from Telegram pinned message storage")
+                    logger.info("Loaded data from Telegram pinned message storage (JSON format)")
+                    return data
+                # Parse new grouped text format
+                data = {'accounts': [], 'account_types': {}, 'prices': {}}
+                current_type = None
+                # Find content after second separator line
+                lines = rest.splitlines()
+                sep_count = 0
+                content_lines = []
+                for line in lines:
+                    if line.startswith('━'):
+                        sep_count += 1
+                        continue
+                    if sep_count >= 2:
+                        content_lines.append(line)
+                for line in content_lines:
+                    line = line.strip()
+                    if not line:
+                        continue
+                    if line.startswith('[') and '|$' in line and line.endswith(']'):
+                        inner = line[1:-1]
+                        type_name, price_str = inner.rsplit('|$', 1)
+                        current_type = type_name
+                        try:
+                            price = float(price_str)
+                        except ValueError:
+                            price = 0.0
+                        data['account_types'][current_type] = []
+                        data['prices'][current_type] = price
+                    elif current_type and '@' in line:
+                        acc = {'email': line}
+                        data['accounts'].append(acc)
+                        data['account_types'][current_type].append(acc)
+                if data['account_types']:
+                    logger.info("Loaded data from Telegram pinned message storage (text format)")
                     return data
     except Exception as e:
         logger.error(f"Failed to load from Telegram storage: {e}")
@@ -114,10 +149,14 @@ def _tg_save():
             f"💰 តម្លៃ:\n{prices_lines}\n"
             f"━━━━━━━━━━━━━━━━━━━━\n"
         )
-        all_emails = [acc.get('email', '') for acc in accounts_data.get('accounts', [])]
-        emails_text = "\n".join(all_emails)
-        json_text = json.dumps(accounts_data, ensure_ascii=False, separators=(',', ':'))
-        text = TG_STORAGE_MARKER + summary + emails_text + "\n" + json_text
+        lines = []
+        for type_name, accs in accounts_data.get('account_types', {}).items():
+            price = accounts_data.get('prices', {}).get(type_name, 0)
+            lines.append(f"[{type_name}|${price}]")
+            for acc in accs:
+                lines.append(acc.get('email', ''))
+        accounts_text = "\n".join(lines)
+        text = TG_STORAGE_MARKER + summary + accounts_text
 
         if len(text) > 4096:
             logger.warning("Data too large for Telegram text storage, truncation risk")
