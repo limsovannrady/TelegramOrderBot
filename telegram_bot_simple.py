@@ -7,6 +7,8 @@ import logging
 import sys
 import json
 import os
+import hashlib
+from bakong_khqr import KHQR
 
 # Detect Vercel environment - use /tmp for writable storage
 IS_VERCEL = os.environ.get('VERCEL') == '1'
@@ -31,39 +33,51 @@ KHMER_MESSAGE = "ជ្រើសរើស Account ដើម្បីបញ្ជ
 ADMIN_ID = 5002402843
 API_URL = f"https://api.telegram.org/bot{BOT_TOKEN}"
 
-# Payment API configuration
-PAYMENT_API_URL = "https://bakong.cambo-kh.com/api/payment"
-PAYMENT_USER_TG_ID = "5002402843"
+# Bakong KHQR configuration
+BAKONG_TOKEN = "rbkw4Br39sRdp4ddKeIr_YrHkL5y7AvMtjgKyr-w0PuhgM"
+BAKONG_RELAY_URL = "https://www.bakongrelay.com"
+khqr_client = KHQR(BAKONG_TOKEN)
 
 def generate_payment_qr(amount):
-    """Generate QR code via payment API. Returns (qr_url, md5) or (None, None) on failure."""
+    """Generate QR code using bakong-khqr library. Returns (png_path, md5) or (None, None) on failure."""
     try:
-        response = requests.get(PAYMENT_API_URL, params={
-            'type': 'generate_qr',
-            'user_tg_id': PAYMENT_USER_TG_ID,
-            'amount': amount
-        }, timeout=15)
-        response.raise_for_status()
-        data = response.json()
-        if data.get('status') == 'success':
-            qr_url = data['data']['Url_qr_code']
-            md5 = data['data']['md5']
-            return qr_url, md5
+        bill_number = f"TRX{int(time.time())}"
+        qr = khqr_client.create_qr(
+            bank_account='sovannrady@aclb',
+            merchant_name='RADY',
+            merchant_city='KPS',
+            amount=amount,
+            currency='USD',
+            store_label='RADY',
+            phone_number='85593330905',
+            bill_number=bill_number,
+            terminal_label='Cashier-01',
+            static=False,
+            expiration=1
+        )
+        png_path = khqr_client.qr_image(qr)
+        md5 = hashlib.md5(qr.encode()).hexdigest()
+        logger.info(f"Generated KHQR for amount ${amount}, bill {bill_number}, md5 {md5}")
+        return png_path, md5
     except Exception as e:
         logger.error(f"Failed to generate payment QR: {e}")
     return None, None
 
 def check_payment_status(md5):
-    """Check payment status via API. Returns True if paid, False otherwise."""
+    """Check payment status via bakongrelay.com. Returns True if paid, False otherwise."""
     try:
-        response = requests.get(PAYMENT_API_URL, params={
-            'type': 'check_md5',
-            'user_tg_id': PAYMENT_USER_TG_ID,
-            'md5': md5
-        }, timeout=15)
+        response = requests.post(
+            f"{BAKONG_RELAY_URL}/api/v1/check-transaction-by-md5",
+            json={'md5': md5},
+            headers={
+                'Authorization': f'Bearer {BAKONG_TOKEN}',
+                'Content-Type': 'application/json'
+            },
+            timeout=15
+        )
         response.raise_for_status()
         data = response.json()
-        return data.get('status') == 'success'
+        return data.get('responseCode') == 0
     except Exception as e:
         logger.error(f"Failed to check payment status: {e}")
     return False
@@ -416,17 +430,21 @@ def handle_callback_query(update):
             requests.post(f"{API_URL}/deleteMessage",
                           data={'chat_id': chat_id, 'message_id': summary_message_id}, timeout=5)
             try:
-                qr_url, md5_hash = generate_payment_qr(session['total_price'])
-                if not qr_url or not md5_hash:
-                    raise Exception("Failed to get QR from payment API")
+                png_path, md5_hash = generate_payment_qr(session['total_price'])
+                if not png_path or not md5_hash:
+                    raise Exception("Failed to generate KHQR payment QR")
                 session['md5_hash'] = md5_hash
                 session['qr_sent_at'] = time.time()
-                qr_response = send_photo_url(
-                    chat_id, qr_url,
+                qr_response = send_photo(
+                    chat_id, png_path,
                     caption=f"_បន្ទាប់ពីបង់ប្រាក់រួច សូមចុចប៊ូតុង ✅ ពិនិត្យការបង់ប្រាក់។_",
                     parse_mode="Markdown",
                     reply_markup=CHECK_PAYMENT_KEYBOARD
                 )
+                try:
+                    os.remove(png_path)
+                except Exception:
+                    pass
                 if qr_response and qr_response.get('result'):
                     session['qr_message_id'] = qr_response['result']['message_id']
                 logger.info(f"Generated QR for user {user_id}: Amount ${session['total_price']}, MD5: {md5_hash}")
