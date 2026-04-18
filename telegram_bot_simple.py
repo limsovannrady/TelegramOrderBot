@@ -424,7 +424,6 @@ def handle_callback_query(update):
                                     'text': 'មិនមានការទិញដែលកំពុងរង់ចាំ។', 'show_alert': True}, timeout=5)
                 return
             session['state'] = 'payment_pending'
-            save_sessions()
             # Delete the summary message
             summary_message_id = callback_query['message']['message_id']
             requests.post(f"{API_URL}/deleteMessage",
@@ -447,11 +446,13 @@ def handle_callback_query(update):
                     pass
                 if qr_response and qr_response.get('result'):
                     session['qr_message_id'] = qr_response['result']['message_id']
+                save_sessions()
                 logger.info(f"Generated QR for user {user_id}: Amount ${session['total_price']}, MD5: {md5_hash}")
             except Exception as e:
                 logger.error(f"Error generating KHQR: {e}")
                 send_message(chat_id, "❌ *មានបញ្ហាក្នុងការបង្កើត QR Code*\n\nសូមព្យាយាមម្តងទៀត។", parse_mode="Markdown")
                 del user_sessions[user_id]
+                save_sessions()
             requests.post(f"{API_URL}/answerCallbackQuery",
                           data={'callback_query_id': callback_query['id']}, timeout=5)
             return
@@ -481,7 +482,13 @@ def handle_callback_query(update):
                 return
 
             # Check payment status
-            is_paid = check_payment_status(session['md5_hash'])
+            md5 = session.get('md5_hash')
+            if not md5:
+                requests.post(f"{API_URL}/answerCallbackQuery",
+                              data={'callback_query_id': callback_query['id'],
+                                    'text': 'មានបញ្ហាក្នុងការស្វែងរក QR។ សូមចាប់ផ្តើមម្តងទៀត។', 'show_alert': True}, timeout=5)
+                return
+            is_paid = check_payment_status(md5)
             if is_paid:
                 requests.post(f"{API_URL}/answerCallbackQuery",
                               data={'callback_query_id': callback_query['id'],
