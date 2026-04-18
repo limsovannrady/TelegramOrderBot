@@ -7,6 +7,13 @@ import logging
 import sys
 import json
 import os
+import io
+from urllib.parse import quote as url_quote
+try:
+    import qrcode
+    HAS_QRCODE = True
+except ImportError:
+    HAS_QRCODE = False
 from bakong_khqr import KHQR
 
 # Detect Vercel environment - use /tmp for writable storage
@@ -53,12 +60,29 @@ def generate_payment_qr(amount):
             static=False,
             expiration=1
         )
-        img_bytes = khqr_client.qr_image(qr, format='bytes')
         md5 = khqr_client.generate_md5(qr)
-        logger.info(f"Generated KHQR for amount ${amount}, bill {bill_number}, md5 {md5}")
+        img_bytes = None
+        # Try local qrcode library first
+        if HAS_QRCODE:
+            try:
+                qr_img = qrcode.make(qr)
+                buf = io.BytesIO()
+                qr_img.save(buf, format='PNG')
+                img_bytes = buf.getvalue()
+                logger.info("QR image generated locally")
+            except Exception as e:
+                logger.warning(f"Local QR generation failed ({type(e).__name__}: {e}), trying API fallback")
+        # Fallback: download from free QR API (no image libs needed)
+        if not img_bytes:
+            qr_api_url = f"https://api.qrserver.com/v1/create-qr-code/?size=500x500&data={url_quote(qr)}"
+            resp = requests.get(qr_api_url, timeout=10)
+            resp.raise_for_status()
+            img_bytes = resp.content
+            logger.info("QR image generated via qrserver.com API fallback")
+        logger.info(f"Generated KHQR for amount ${amount}, bill {bill_number}, md5 {md5}, size {len(img_bytes)}b")
         return img_bytes, md5
     except Exception as e:
-        logger.error(f"Failed to generate payment QR: {e}")
+        logger.error(f"Failed to generate payment QR: {type(e).__name__}: {e}")
     return None, None
 
 def check_payment_status(md5):
@@ -452,7 +476,7 @@ def handle_callback_query(update):
                 save_sessions()
                 logger.info(f"Generated QR for user {user_id}: Amount ${session['total_price']}, MD5: {md5_hash}")
             except Exception as e:
-                logger.error(f"Error generating KHQR: {e}")
+                logger.error(f"Error generating KHQR: {type(e).__name__}: {e}")
                 send_message(chat_id, "❌ *មានបញ្ហាក្នុងការបង្កើត QR Code*\n\nសូមព្យាយាមម្តងទៀត។", parse_mode="Markdown")
                 del user_sessions[user_id]
                 save_sessions()
