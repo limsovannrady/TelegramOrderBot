@@ -268,6 +268,21 @@ def get_updates(offset=None):
         logger.error(f"Failed to get updates: {e}")
         return None
 
+def show_account_selection(chat_id):
+    """Send the account selection inline keyboard to the given chat."""
+    inline_buttons = []
+    for account_type, accounts in accounts_data['account_types'].items():
+        count = len(accounts)
+        if count > 0:
+            button_text = f"ទិញ {account_type} - មានក្នុងស្តុក {count}"
+            inline_buttons.append([{'text': button_text, 'callback_data': f"buy_{account_type}"}])
+    if not inline_buttons:
+        send_message(chat_id, "_សូមអភ័យទោស អស់ពីស្តុក 🪤_", parse_mode="Markdown")
+        return
+    send_message(chat_id, "សូមជ្រើសរើស Account ដើម្បីទិញ៖",
+                 reply_markup={'inline_keyboard': inline_buttons})
+
+
 def handle_callback_query(update):
     """Handle callback query (inline button clicks)."""
     try:
@@ -374,6 +389,7 @@ def handle_callback_query(update):
             requests.post(f"{API_URL}/deleteMessage",
                           data={'chat_id': chat_id, 'message_id': summary_message_id}, timeout=5)
             send_message(chat_id, "🚫 *បានបោះបង់ការទិញ*", parse_mode="Markdown")
+            show_account_selection(chat_id)
             requests.post(f"{API_URL}/answerCallbackQuery",
                           data={'callback_query_id': callback_query['id']}, timeout=5)
             return
@@ -435,6 +451,7 @@ def handle_callback_query(update):
             if IS_VERCEL:
                 save_sessions()
             send_message(chat_id, "🚫 *បានបោះបង់ការទិញ*", parse_mode="Markdown")
+            show_account_selection(chat_id)
 
         # Answer callback query to remove loading state
         answer_url = f"{API_URL}/answerCallbackQuery"
@@ -464,23 +481,8 @@ def handle_message(update):
         logger.info(f"Received message from user {user.get('first_name', 'Unknown')} (ID: {user_id}): {text}")
         
         # Function to show account selection interface
-        def show_account_selection():
-            # Only show account types that have stock
-            inline_buttons = []
-            
-            for account_type, accounts in accounts_data['account_types'].items():
-                count = len(accounts)
-                if count > 0:
-                    button_text = f"ទិញ {account_type} - មានក្នុងស្តុក {count}"
-                    inline_buttons.append([{'text': button_text, 'callback_data': f"buy_{account_type}"}])
-            
-            # If no account types available, show out of stock message
-            if not inline_buttons:
-                send_message(chat_id, "_សូមអភ័យទោស អស់ពីស្តុក 🪤_", parse_mode="Markdown")
-                return
-            
-            send_message(chat_id, "សូមជ្រើសរើស Account ដើម្បីទិញ៖",
-                         reply_markup={'inline_keyboard': inline_buttons})
+        def show_account_selection_local():
+            show_account_selection(chat_id)
         
         # Check if user is in a purchase session (for all users including admin)
         if user_id in user_sessions:
@@ -538,14 +540,14 @@ def handle_message(update):
                     send_photo(chat_id, 'start_banner.jpg', caption=welcome_caption, parse_mode='HTML', message_effect_id='5046509860389126442')
                 except Exception as e:
                     logger.error(f"Failed to send banner image: {e}")
-            show_account_selection()
+            show_account_selection_local()
             return
         
         # Handle non-admin users
         if user_id != ADMIN_ID:
             # For unrecognized commands, show account selection
             logger.info(f"Non-admin user {user_id} sent unrecognized command, showing account selection")
-            show_account_selection()
+            show_account_selection_local()
             return
         
         # Admin-only commands
@@ -620,7 +622,7 @@ def handle_message(update):
             
             # Show account selection interface for any unrecognized admin input
             logger.info(f"Admin {user_id} sent unrecognized command, showing account selection interface")
-            show_account_selection()
+            show_account_selection_local()
         
         # If not admin, ignore
         
