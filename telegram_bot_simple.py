@@ -86,9 +86,12 @@ def _tg_load():
         if pinned:
             text = pinned.get('text', '')
             if text.startswith(TG_STORAGE_MARKER):
-                data = json.loads(text[len(TG_STORAGE_MARKER):])
-                logger.info("Loaded data from Telegram pinned message storage")
-                return data
+                rest = text[len(TG_STORAGE_MARKER):]
+                json_start = next((i for i, c in enumerate(rest) if c in ('{', '[')), None)
+                if json_start is not None:
+                    data = json.loads(rest[json_start:])
+                    logger.info("Loaded data from Telegram pinned message storage")
+                    return data
     except Exception as e:
         logger.error(f"Failed to load from Telegram storage: {e}")
     return None
@@ -98,7 +101,22 @@ def _tg_save():
     try:
         token = os.environ.get('TELEGRAM_BOT_TOKEN', '')
         base = f"https://api.telegram.org/bot{token}"
-        text = TG_STORAGE_MARKER + json.dumps(accounts_data, ensure_ascii=False, separators=(',', ':'))
+
+        total_accounts = sum(len(v) for v in accounts_data.get('account_types', {}).values())
+        total_types = len(accounts_data.get('account_types', {}))
+        prices = accounts_data.get('prices', {})
+        prices_lines = "\n".join(f"   • {t}: ${p}" for t, p in prices.items()) or "   • មិនមាន"
+
+        summary = (
+            f"━━━━━━━━━━━━━━━━━━━━\n"
+            f"📊 Account សរុប: {total_accounts}\n"
+            f"🗂 ប្រភេទ: {total_types}\n"
+            f"💰 តម្លៃ:\n{prices_lines}\n"
+            f"━━━━━━━━━━━━━━━━━━━━\n"
+        )
+        json_text = json.dumps(accounts_data, ensure_ascii=False, indent=2)
+        text = TG_STORAGE_MARKER + summary + json_text
+
         if len(text) > 4096:
             logger.warning("Data too large for Telegram text storage, truncation risk")
         msg_resp = requests.post(f"{base}/sendMessage",
