@@ -501,8 +501,8 @@ def handle_message(update):
             if text.strip() == '/start':
                 try:
                     last_name = user.get('last_name', '')
-                    welcome_caption = f"🎉 សូមស្វាគមន៍ {last_name}".strip()
-                    send_photo(chat_id, 'start_banner.jpg', caption=welcome_caption, reply_markup=COUPON_KEYBOARD)
+                    welcome_caption = f'<tg-emoji emoji-id="5967385500447675533">🎉</tg-emoji> <b>សូមស្វាគមន៍ {last_name}</b>'.strip()
+                    send_photo(chat_id, 'start_banner.jpg', caption=welcome_caption, parse_mode='HTML', reply_markup=COUPON_KEYBOARD)
                 except Exception as e:
                     logger.error(f"Failed to send banner image: {e}")
             show_account_selection()
