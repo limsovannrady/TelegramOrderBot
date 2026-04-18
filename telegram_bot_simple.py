@@ -175,15 +175,6 @@ accounts_data = load_data()
 if IS_VERCEL:
     load_sessions()
 
-# Persistent keyboard - Regular keyboard (not inline)
-COUPON_KEYBOARD = {
-    'keyboard': [
-        ['គូប៉ុង E-GetS']
-    ],
-    'resize_keyboard': True,
-    'one_time_keyboard': False
-}
-
 def send_message(chat_id, text, reply_to_message_id=None, parse_mode=None, reply_markup=None):
     """Send a message to a specific chat."""
     url = f"{API_URL}/sendMessage"
@@ -313,7 +304,7 @@ def handle_callback_query(update):
                     reply_message += f"តម្លៃ ${price} ក្នុងមួយ Account\n\n"
                     reply_message += "*សូមបញ្ចូលចំនួន Accounts ដែលចង់ទិញ៖*"
                     
-                    send_message(chat_id, reply_message, parse_mode="Markdown", reply_markup=COUPON_KEYBOARD)
+                    send_message(chat_id, reply_message, parse_mode="Markdown")
                     
                     # Delete the original message with inline buttons
                     original_message_id = callback_query['message']['message_id']
@@ -326,12 +317,12 @@ def handle_callback_query(update):
                     
                     logger.info(f"User {user_id} selected account type {account_type}, waiting for quantity input")
                 else:
-                    send_message(chat_id, f"សុំទោស! Account {account_type} អស់ស្តុកហើយ។", reply_markup=COUPON_KEYBOARD)
+                    send_message(chat_id, f"សុំទោស! Account {account_type} អស់ស្តុកហើយ។")
         
         # Handle out-of-stock button clicks
         elif callback_data.startswith('out_of_stock_'):
             account_type = callback_data.replace('out_of_stock_', '')
-            send_message(chat_id, f"សូមអភ័យទោស Account {account_type} អស់ពីស្តុក 🪤", reply_markup=COUPON_KEYBOARD)
+            send_message(chat_id, f"សូមអភ័យទោស Account {account_type} អស់ពីស្តុក 🪤")
         
         # Handle check payment button
         elif callback_data == 'check_payment':
@@ -356,7 +347,7 @@ def handle_callback_query(update):
                     save_sessions()
                 send_message(chat_id,
                              "⏰ *ការបង់ប្រាក់ហួសពេល*\n\nការទិញត្រូវបានលុបចោលដោយស្វ័យប្រវត្តិ ព្រោះហួសពេល *3 នាទី*។\n\nសូមធ្វើការទិញម្តងទៀត។",
-                             parse_mode="Markdown", reply_markup=COUPON_KEYBOARD)
+                             parse_mode="Markdown")
                 requests.post(f"{API_URL}/answerCallbackQuery",
                               data={'callback_query_id': callback_query['id']}, timeout=5)
                 return
@@ -389,7 +380,7 @@ def handle_callback_query(update):
                 del user_sessions[user_id]
             if IS_VERCEL:
                 save_sessions()
-            send_message(chat_id, "🚫 *បានបោះបង់ការទិញ*", parse_mode="Markdown", reply_markup=COUPON_KEYBOARD)
+            send_message(chat_id, "🚫 *បានបោះបង់ការទិញ*", parse_mode="Markdown")
 
         # Answer callback query to remove loading state
         answer_url = f"{API_URL}/answerCallbackQuery"
@@ -431,7 +422,7 @@ def handle_message(update):
             
             # If no account types available, show out of stock message
             if not inline_buttons:
-                send_message(chat_id, "_សូមអភ័យទោស អស់ពីស្តុក 🪤_", parse_mode="Markdown", reply_markup=COUPON_KEYBOARD)
+                send_message(chat_id, "_សូមអភ័យទោស អស់ពីស្តុក 🪤_", parse_mode="Markdown")
                 return
             
             send_message(chat_id, "សូមជ្រើសរើស Account ដើម្បីទិញ៖",
@@ -446,11 +437,11 @@ def handle_message(update):
                 try:
                     quantity = int(text.strip())
                     if quantity <= 0:
-                        send_message(chat_id, "សូមបញ្ចូលចំនួនធំជាង 0", reply_markup=COUPON_KEYBOARD)
+                        send_message(chat_id, "សូមបញ្ចូលចំនួនធំជាង 0")
                         return
                     
                     if quantity > session['available_count']:
-                        send_message(chat_id, f"សុំទោស! មានត្រឹមតែ {session['available_count']} នៅក្នុងស្តុក", reply_markup=COUPON_KEYBOARD)
+                        send_message(chat_id, f"សុំទោស! មានត្រឹមតែ {session['available_count']} នៅក្នុងស្តុក")
                         return
                     
                     # Calculate total price
@@ -486,23 +477,23 @@ def handle_message(update):
                         
                     except Exception as e:
                         logger.error(f"Error generating KHQR: {e}")
-                        send_message(chat_id, "❌ *មានបញ្ហាក្នុងការបង្កើត QR Code*\n\nសូមព្យាយាមម្តងទៀត។", parse_mode="Markdown", reply_markup=COUPON_KEYBOARD)
+                        send_message(chat_id, "❌ *មានបញ្ហាក្នុងការបង្កើត QR Code*\n\nសូមព្យាយាមម្តងទៀត។", parse_mode="Markdown")
                         del user_sessions[user_id]
                     
                     return
                     
                 except ValueError:
-                    send_message(chat_id, "សូមបញ្ចូលចំនួនជាលេខ (ឧទាហរណ៍: 1, 2, 3)", reply_markup=COUPON_KEYBOARD)
+                    send_message(chat_id, "សូមបញ្ចូលចំនួនជាលេខ (ឧទាហរណ៍: 1, 2, 3)")
                     return
 
         # Handle /start command, keyboard button, and invalid commands for all users
-        if text.strip() == '/start' or text.strip() == 'គូប៉ុង E-GetS':
+        if text.strip() == '/start':
             logger.info(f"User {user_id} triggered account selection interface")
             if text.strip() == '/start':
                 try:
                     last_name = user.get('last_name', '')
                     welcome_caption = f'<tg-emoji emoji-id="5967385500447675533">🎉</tg-emoji> <b>សូមស្វាគមន៍ {last_name}</b>'.strip()
-                    send_photo(chat_id, 'start_banner.jpg', caption=welcome_caption, parse_mode='HTML', reply_markup=COUPON_KEYBOARD)
+                    send_photo(chat_id, 'start_banner.jpg', caption=welcome_caption, parse_mode='HTML')
                 except Exception as e:
                     logger.error(f"Failed to send banner image: {e}")
             show_account_selection()
@@ -520,7 +511,7 @@ def handle_message(update):
             # Handle /add_account command
             if text.strip() == '/add_account':
                 user_sessions[user_id] = {'state': 'waiting_for_accounts'}
-                send_message(chat_id, "*បញ្ចូល Account សម្រាប់លក់ (អ៊ីមែលម្តងមួយបន្ទាត់)៖*\n\n```\nl1jebywyzos2@10mail.info\nabc123@gmail.com\n```", reply_to_message_id=message_id, parse_mode="Markdown", reply_markup=COUPON_KEYBOARD)
+                send_message(chat_id, "*បញ្ចូល Account សម្រាប់លក់ (អ៊ីមែលម្តងមួយបន្ទាត់)៖*\n\n```\nl1jebywyzos2@10mail.info\nabc123@gmail.com\n```", reply_to_message_id=message_id, parse_mode="Markdown")
                 return
             
             # Check if user is in a session
@@ -542,15 +533,15 @@ def handle_message(update):
                         session['accounts'] = accounts
                         session['state'] = 'waiting_for_account_type'
                         count = len(accounts)
-                        send_message(chat_id, f"*បានបញ្ចូល Account ចំនួន {count}\n\nសូមបញ្ចូលប្រភេទ Account៖*", reply_to_message_id=message_id, parse_mode="Markdown", reply_markup=COUPON_KEYBOARD)
+                        send_message(chat_id, f"*បានបញ្ចូល Account ចំនួន {count}\n\nសូមបញ្ចូលប្រភេទ Account៖*", reply_to_message_id=message_id, parse_mode="Markdown")
                     else:
-                        send_message(chat_id, "*មិនរកឃើញអ៊ីមែលត្រឹមត្រូវ! សូមបញ្ចូលតាមទម្រង់៖*\n\n```\nl1jebywyzos2@10mail.info\nabc123@gmail.com\n```", reply_to_message_id=message_id, parse_mode="Markdown", reply_markup=COUPON_KEYBOARD)
+                        send_message(chat_id, "*មិនរកឃើញអ៊ីមែលត្រឹមត្រូវ! សូមបញ្ចូលតាមទម្រង់៖*\n\n```\nl1jebywyzos2@10mail.info\nabc123@gmail.com\n```", reply_to_message_id=message_id, parse_mode="Markdown")
                     return
                 
                 elif session['state'] == 'waiting_for_account_type':
                     session['account_type'] = text.strip()
                     session['state'] = 'waiting_for_price'
-                    send_message(chat_id, f"*សូមដាក់តម្លៃក្នុងប្រភេទ Account {text.strip()}*", reply_to_message_id=message_id, parse_mode="Markdown", reply_markup=COUPON_KEYBOARD)
+                    send_message(chat_id, f"*សូមដាក់តម្លៃក្នុងប្រភេទ Account {text.strip()}*", reply_to_message_id=message_id, parse_mode="Markdown")
                     return
                 
                 elif session['state'] == 'waiting_for_price':
@@ -571,12 +562,12 @@ def handle_message(update):
                         del user_sessions[user_id]
                         
                         # Send confirmation with keyboard
-                        send_message(chat_id, f"*✅ បានបញ្ចូល Account ដោយជោគជ័យ*\n\n```\n🔹 ចំនួន: {count}\n\n🔹 ប្រភេទ: {account_type}\n\n🔹 តម្លៃ: {price}$\n```", reply_to_message_id=message_id, parse_mode="Markdown", reply_markup=COUPON_KEYBOARD)
+                        send_message(chat_id, f"*✅ បានបញ្ចូល Account ដោយជោគជ័យ*\n\n```\n🔹 ចំនួន: {count}\n\n🔹 ប្រភេទ: {account_type}\n\n🔹 តម្លៃ: {price}$\n```", reply_to_message_id=message_id, parse_mode="Markdown")
                         
                         logger.info(f"Admin {user_id} added {count} accounts of type {account_type} with price ${price}")
                         
                     except ValueError:
-                        send_message(chat_id, "តម្លៃមិនត្រឹមត្រូវ។ សូមបញ្ចូលតម្លៃជាលេខ (ឧទាហរណ៍: 5.99)", reply_to_message_id=message_id, reply_markup=COUPON_KEYBOARD)
+                        send_message(chat_id, "តម្លៃមិនត្រឹមត្រូវ។ សូមបញ្ចូលតម្លៃជាលេខ (ឧទាហរណ៍: 5.99)", reply_to_message_id=message_id)
                     return
             
             # If admin sent a message but it's not a recognized command or part of workflow
@@ -616,14 +607,14 @@ def deliver_accounts(chat_id, user_id, session):
 
     if account_type not in accounts_data['account_types']:
         send_message(chat_id, f"❌ *មានបញ្ហា!*\n\nគ្មាន Account ប្រភេទ {account_type} ក្នុងស្តុក។",
-                     parse_mode="Markdown", reply_markup=COUPON_KEYBOARD)
+                     parse_mode="Markdown")
         return
 
     available_accounts = accounts_data['account_types'][account_type]
     if len(available_accounts) < quantity:
         send_message(chat_id,
                      f"❌ *មានបញ្ហា!*\n\nសុំទោស! មានត្រឹមតែ {len(available_accounts)} Accounts នៅក្នុងស្តុក។",
-                     parse_mode="Markdown", reply_markup=COUPON_KEYBOARD)
+                     parse_mode="Markdown")
         return
 
     delivered_accounts = available_accounts[:quantity]
@@ -641,7 +632,7 @@ def deliver_accounts(chat_id, user_id, session):
             accounts_message += f"{account.get('phone', '')} | {account.get('password', '')}\n"
     accounts_message += f"\n_សូមអរគុណសម្រាប់ការទិញ! 🙏_"
 
-    send_message(chat_id, accounts_message, parse_mode="Markdown", reply_markup=COUPON_KEYBOARD)
+    send_message(chat_id, accounts_message, parse_mode="Markdown")
 
     if user_id in user_sessions:
         del user_sessions[user_id]
