@@ -325,7 +325,59 @@ def handle_callback_query(update):
         elif callback_data.startswith('out_of_stock_'):
             account_type = callback_data.replace('out_of_stock_', '')
             send_message(chat_id, f"សូមអភ័យទោស Account {account_type} អស់ពីស្តុក 🪤")
-        
+
+        # Handle confirm buy — generate QR and proceed to payment
+        elif callback_data == 'confirm_buy':
+            if IS_VERCEL:
+                load_sessions()
+            session = user_sessions.get(user_id)
+            if not session or session.get('state') != 'waiting_for_confirmation':
+                requests.post(f"{API_URL}/answerCallbackQuery",
+                              data={'callback_query_id': callback_query['id'],
+                                    'text': 'មិនមានការទិញដែលកំពុងរង់ចាំ។', 'show_alert': True}, timeout=5)
+                return
+            session['state'] = 'payment_pending'
+            # Delete the summary message
+            summary_message_id = callback_query['message']['message_id']
+            requests.post(f"{API_URL}/deleteMessage",
+                          data={'chat_id': chat_id, 'message_id': summary_message_id}, timeout=5)
+            try:
+                qr_url, md5_hash = generate_payment_qr(session['total_price'])
+                if not qr_url or not md5_hash:
+                    raise Exception("Failed to get QR from payment API")
+                session['md5_hash'] = md5_hash
+                session['qr_sent_at'] = time.time()
+                qr_response = send_photo_url(
+                    chat_id, qr_url,
+                    caption=f"_បន្ទាប់ពីបង់ប្រាក់រួច សូមចុចប៊ូតុង ✅ ពិនិត្យការបង់ប្រាក់។_",
+                    parse_mode="Markdown",
+                    reply_markup=CHECK_PAYMENT_KEYBOARD
+                )
+                if qr_response and qr_response.get('result'):
+                    session['qr_message_id'] = qr_response['result']['message_id']
+                logger.info(f"Generated QR for user {user_id}: Amount ${session['total_price']}, MD5: {md5_hash}")
+            except Exception as e:
+                logger.error(f"Error generating KHQR: {e}")
+                send_message(chat_id, "❌ *មានបញ្ហាក្នុងការបង្កើត QR Code*\n\nសូមព្យាយាមម្តងទៀត។", parse_mode="Markdown")
+                del user_sessions[user_id]
+            requests.post(f"{API_URL}/answerCallbackQuery",
+                          data={'callback_query_id': callback_query['id']}, timeout=5)
+            return
+
+        # Handle cancel buy — cancel from summary screen (before QR)
+        elif callback_data == 'cancel_buy':
+            if user_id in user_sessions:
+                del user_sessions[user_id]
+            if IS_VERCEL:
+                save_sessions()
+            summary_message_id = callback_query['message']['message_id']
+            requests.post(f"{API_URL}/deleteMessage",
+                          data={'chat_id': chat_id, 'message_id': summary_message_id}, timeout=5)
+            send_message(chat_id, "🚫 *បានបោះបង់ការទិញ*", parse_mode="Markdown")
+            requests.post(f"{API_URL}/answerCallbackQuery",
+                          data={'callback_query_id': callback_query['id']}, timeout=5)
+            return
+
         # Handle check payment button
         elif callback_data == 'check_payment':
             if IS_VERCEL:
@@ -449,39 +501,26 @@ def handle_message(update):
                     # Calculate total price
                     total_price = quantity * session['price']
                     
-                    # Update session with purchase details
+                    # Update session with purchase details, wait for confirmation
                     session['quantity'] = quantity
                     session['total_price'] = total_price
-                    session['state'] = 'payment_pending'
+                    session['state'] = 'waiting_for_confirmation'
                     
-                    # Generate QR code via payment API and send to user
-                    try:
-                        qr_url, md5_hash = generate_payment_qr(session['total_price'])
-                        
-                        if not qr_url or not md5_hash:
-                            raise Exception("Failed to get QR from payment API")
-                        
-                        # Store payment info in session for later verification
-                        session['md5_hash'] = md5_hash
-                        session['qr_sent_at'] = time.time()
-                        
-                        # Send QR code image with check-payment button
-                        qr_response = send_photo_url(
-                            chat_id, qr_url,
-                            caption=f"_បន្ទាប់ពីបង់ប្រាក់រួច សូមចុចប៊ូតុង ✅ ពិនិត្យការបង់ប្រាក់។_",
-                            parse_mode="Markdown",
-                            reply_markup=CHECK_PAYMENT_KEYBOARD
-                        )
-                        if qr_response and qr_response.get('result'):
-                            session['qr_message_id'] = qr_response['result']['message_id']
-                        
-                        logger.info(f"Generated QR for user {user_id}: Amount ${session['total_price']}, MD5: {md5_hash}")
-                        
-                    except Exception as e:
-                        logger.error(f"Error generating KHQR: {e}")
-                        send_message(chat_id, "❌ *មានបញ្ហាក្នុងការបង្កើត QR Code*\n\nសូមព្យាយាមម្តងទៀត។", parse_mode="Markdown")
-                        del user_sessions[user_id]
-                    
+                    # Show order summary with confirm/cancel buttons
+                    confirm_keyboard = {
+                        'inline_keyboard': [
+                            [
+                                {'text': '❌ បោះបង់', 'callback_data': 'cancel_buy'},
+                                {'text': '✅ ទិញ', 'callback_data': 'confirm_buy'}
+                            ]
+                        ]
+                    }
+                    summary = (
+                        f"🔹 ចំនួន: {quantity}\n\n"
+                        f"🔹 ប្រភេទ: {session['account_type']}\n\n"
+                        f"🔹 តម្លៃ: {total_price}$"
+                    )
+                    send_message(chat_id, summary, reply_markup=confirm_keyboard)
                     return
                     
                 except ValueError:
