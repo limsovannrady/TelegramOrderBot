@@ -3,5 +3,3 @@ bakong-khqr
 pillow
 python-telegram-bot
 qrcode
-requests
-telegram
