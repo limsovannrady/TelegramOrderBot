@@ -170,9 +170,8 @@ user_sessions = {}
 # Account storage - loaded from file for persistence across restarts
 accounts_data = load_data()
 
-# On Vercel load persisted sessions on module init
-if IS_VERCEL:
-    load_sessions()
+# Always load persisted sessions on startup
+load_sessions()
 
 def send_message(chat_id, text, reply_to_message_id=None, parse_mode=None, reply_markup=None):
     """Send a message to a specific chat."""
@@ -315,6 +314,7 @@ def handle_callback_query(update):
                         'price': price,
                         'available_count': count
                     }
+                    save_sessions()
                     
                     # Create regular message without reply quote
                     reply_message = f"មាន {count} នៅក្នុងស្តុក\n"
@@ -343,8 +343,7 @@ def handle_callback_query(update):
 
         # Handle confirm buy — generate QR and proceed to payment
         elif callback_data == 'confirm_buy':
-            if IS_VERCEL:
-                load_sessions()
+            load_sessions()
             session = user_sessions.get(user_id)
             if not session or session.get('state') != 'waiting_for_confirmation':
                 requests.post(f"{API_URL}/answerCallbackQuery",
@@ -352,6 +351,7 @@ def handle_callback_query(update):
                                     'text': 'មិនមានការទិញដែលកំពុងរង់ចាំ។', 'show_alert': True}, timeout=5)
                 return
             session['state'] = 'payment_pending'
+            save_sessions()
             # Delete the summary message
             summary_message_id = callback_query['message']['message_id']
             requests.post(f"{API_URL}/deleteMessage",
@@ -383,8 +383,7 @@ def handle_callback_query(update):
         elif callback_data == 'cancel_buy':
             if user_id in user_sessions:
                 del user_sessions[user_id]
-            if IS_VERCEL:
-                save_sessions()
+            save_sessions()
             summary_message_id = callback_query['message']['message_id']
             requests.post(f"{API_URL}/deleteMessage",
                           data={'chat_id': chat_id, 'message_id': summary_message_id}, timeout=5)
@@ -396,8 +395,7 @@ def handle_callback_query(update):
 
         # Handle check payment button
         elif callback_data == 'check_payment':
-            if IS_VERCEL:
-                load_sessions()
+            load_sessions()
             session = user_sessions.get(user_id)
             if not session or session.get('state') != 'payment_pending':
                 requests.post(f"{API_URL}/answerCallbackQuery",
@@ -412,8 +410,7 @@ def handle_callback_query(update):
                               data={'callback_query_id': callback_query['id'],
                                     'text': '✅ ការបង់ប្រាក់បានបញ្ជាក់!'}, timeout=5)
                 deliver_accounts(chat_id, user_id, session)
-                if IS_VERCEL:
-                    save_sessions()
+                save_sessions()
             else:
                 requests.post(f"{API_URL}/answerCallbackQuery",
                               data={'callback_query_id': callback_query['id'],
@@ -430,8 +427,7 @@ def handle_callback_query(update):
                               data={'chat_id': chat_id, 'message_id': qr_message_id}, timeout=5)
             if user_id in user_sessions:
                 del user_sessions[user_id]
-            if IS_VERCEL:
-                save_sessions()
+            save_sessions()
             send_message(chat_id, "🚫 *បានបោះបង់ការទិញ*", parse_mode="Markdown")
             show_account_selection(chat_id)
 
@@ -489,6 +485,7 @@ def handle_message(update):
                     session['quantity'] = quantity
                     session['total_price'] = total_price
                     session['state'] = 'waiting_for_confirmation'
+                    save_sessions()
                     
                     # Show order summary with confirm/cancel buttons
                     confirm_keyboard = {
