@@ -53,10 +53,10 @@ def generate_payment_qr(amount):
             static=False,
             expiration=1
         )
-        png_path = khqr_client.qr_image(qr)
+        img_bytes = khqr_client.qr_image(qr, format='bytes')
         md5 = khqr_client.generate_md5(qr)
         logger.info(f"Generated KHQR for amount ${amount}, bill {bill_number}, md5 {md5}")
-        return png_path, md5
+        return img_bytes, md5
     except Exception as e:
         logger.error(f"Failed to generate payment QR: {e}")
     return None, None
@@ -288,6 +288,25 @@ def send_photo(chat_id, photo_path, caption=None, parse_mode=None, reply_markup=
         logger.error(f"Failed to send photo: {e}")
         return None
 
+def send_photo_bytes(chat_id, photo_bytes, caption=None, parse_mode=None, reply_markup=None):
+    """Send a photo from raw bytes to a specific chat (no filesystem needed)."""
+    url = f"{API_URL}/sendPhoto"
+    data = {'chat_id': chat_id}
+    if caption:
+        data['caption'] = caption
+    if parse_mode:
+        data['parse_mode'] = parse_mode
+    if reply_markup:
+        data['reply_markup'] = json.dumps(reply_markup)
+    try:
+        files = {'photo': ('qr.png', photo_bytes, 'image/png')}
+        response = requests.post(url, data=data, files=files, timeout=15)
+        response.raise_for_status()
+        return response.json()
+    except requests.RequestException as e:
+        logger.error(f"Failed to send photo bytes: {e}")
+        return None
+
 def send_photo_url(chat_id, photo_url, caption=None, parse_mode=None, reply_markup=None):
     """Send a photo from a URL to a specific chat."""
     url = f"{API_URL}/sendPhoto"
@@ -417,21 +436,17 @@ def handle_callback_query(update):
             requests.post(f"{API_URL}/deleteMessage",
                           data={'chat_id': chat_id, 'message_id': summary_message_id}, timeout=5)
             try:
-                png_path, md5_hash = generate_payment_qr(session['total_price'])
-                if not png_path or not md5_hash:
+                img_bytes, md5_hash = generate_payment_qr(session['total_price'])
+                if not img_bytes or not md5_hash:
                     raise Exception("Failed to generate KHQR payment QR")
                 session['md5_hash'] = md5_hash
                 session['qr_sent_at'] = time.time()
-                qr_response = send_photo(
-                    chat_id, png_path,
+                qr_response = send_photo_bytes(
+                    chat_id, img_bytes,
                     caption=f"_បន្ទាប់ពីបង់ប្រាក់រួច សូមចុចប៊ូតុង ✅ ពិនិត្យការបង់ប្រាក់។_",
                     parse_mode="Markdown",
                     reply_markup=CHECK_PAYMENT_KEYBOARD
                 )
-                try:
-                    os.remove(png_path)
-                except Exception:
-                    pass
                 if qr_response and qr_response.get('result'):
                     session['qr_message_id'] = qr_response['result']['message_id']
                 save_sessions()
