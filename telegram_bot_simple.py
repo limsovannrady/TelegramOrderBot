@@ -58,7 +58,6 @@ def generate_payment_qr(amount):
             bill_number=bill_number,
             terminal_label='Cashier-01',
             static=False,
-            expiration=1
         )
         md5 = khqr_client.generate_md5(qr)
         img_bytes = None

@@ -14,10 +14,17 @@
     },
     {
       "email": "l1jebywyzos2@10mail.info"
+    },
+    {
+      "email": "l1jebywyzos2@10mail.info"
     }
   ],
   "account_types": {
-    "The best way": [],
+    "The best way": [
+      {
+        "email": "l1jebywyzos2@10mail.info"
+      }
+    ],
     "65": []
   },
   "prices": {

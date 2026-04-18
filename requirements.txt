@@ -1,5 +1,5 @@
 requests
-bakong-khqr[image]
+bakong-khqr[image]==0.5.7
 pillow
 python-telegram-bot
 qrcode
