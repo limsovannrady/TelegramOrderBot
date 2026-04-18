@@ -516,11 +516,12 @@ def handle_message(update):
                         ]
                     }
                     summary = (
-                        f"🔹 ចំនួន: {quantity}\n\n"
+                        f"<b>សូមបញ្ជាក់ការបញ្ជាទិញ</b>\n\n"
+                        f"<blockquote>🔹 ចំនួន: {quantity}\n\n"
                         f"🔹 ប្រភេទ: {session['account_type']}\n\n"
-                        f"🔹 តម្លៃ: {total_price}$"
+                        f"🔹 តម្លៃ: {total_price}$</blockquote>"
                     )
-                    send_message(chat_id, summary, reply_markup=confirm_keyboard)
+                    send_message(chat_id, summary, parse_mode="HTML", reply_markup=confirm_keyboard)
                     return
                     
                 except ValueError:
