@@ -7,6 +7,8 @@ import logging
 import sys
 import json
 import os
+import io
+from urllib.parse import quote as url_quote
 from bakong_khqr import KHQR
 
 # Detect Vercel environment - use /tmp for writable storage
@@ -54,7 +56,31 @@ def generate_payment_qr(amount):
             expiration=1
         )
         md5 = khqr_client.generate_md5(qr)
-        img_bytes = khqr_client.qr_image(qr, format='bytes')
+        img_bytes = None
+        # Layer 1: bakong-khqr library's styled image (requires Pillow)
+        try:
+            img_bytes = khqr_client.qr_image(qr, format='bytes')
+            logger.info("QR image generated via bakong-khqr library")
+        except Exception as e1:
+            logger.warning(f"bakong-khqr image failed ({type(e1).__name__}: {e1}), trying qrcode library")
+        # Layer 2: qrcode library directly
+        if not img_bytes:
+            try:
+                import qrcode
+                qr_img = qrcode.make(qr)
+                buf = io.BytesIO()
+                qr_img.save(buf, format='PNG')
+                img_bytes = buf.getvalue()
+                logger.info("QR image generated via qrcode library")
+            except Exception as e2:
+                logger.warning(f"qrcode library failed ({type(e2).__name__}: {e2}), trying API fallback")
+        # Layer 3: free online QR API (no image libraries needed)
+        if not img_bytes:
+            qr_api_url = f"https://api.qrserver.com/v1/create-qr-code/?size=500x500&data={url_quote(qr)}"
+            resp = requests.get(qr_api_url, timeout=10)
+            resp.raise_for_status()
+            img_bytes = resp.content
+            logger.info("QR image generated via qrserver.com API")
         logger.info(f"Generated KHQR for amount ${amount}, bill {bill_number}, md5 {md5}, size {len(img_bytes)}b")
         return img_bytes, md5
     except Exception as e:
@@ -754,7 +780,14 @@ def main():
     """Main bot loop."""
     logger.info("Starting Telegram Bot...")
     logger.info(f"Bot token configured: {BOT_TOKEN[:10]}...")
-    
+
+    # Delete any active webhook so polling mode works without 409 conflicts
+    try:
+        requests.post(f"{API_URL}/deleteWebhook", timeout=10)
+        logger.info("Webhook deleted — polling mode active")
+    except Exception as e:
+        logger.warning(f"Could not delete webhook: {e}")
+
     # Test bot connection
     try:
         test_url = f"{API_URL}/getMe"
