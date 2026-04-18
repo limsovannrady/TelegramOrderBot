@@ -200,7 +200,7 @@ def send_message(chat_id, text, reply_to_message_id=None, parse_mode=None, reply
         logger.error(f"Failed to send message: {e}")
         return None
 
-def send_photo(chat_id, photo_path, caption=None, parse_mode=None, reply_markup=None):
+def send_photo(chat_id, photo_path, caption=None, parse_mode=None, reply_markup=None, message_effect_id=None):
     """Send a photo to a specific chat."""
     url = f"{API_URL}/sendPhoto"
     data = {
@@ -215,6 +215,9 @@ def send_photo(chat_id, photo_path, caption=None, parse_mode=None, reply_markup=
     
     if reply_markup:
         data['reply_markup'] = json.dumps(reply_markup)
+    
+    if message_effect_id:
+        data['message_effect_id'] = message_effect_id
     
     try:
         with open(photo_path, 'rb') as photo:
@@ -493,7 +496,7 @@ def handle_message(update):
                 try:
                     last_name = user.get('last_name', '')
                     welcome_caption = f'<tg-emoji emoji-id="5967385500447675533">🎉</tg-emoji> <b>សូមស្វាគមន៍ {last_name}</b>'.strip()
-                    send_photo(chat_id, 'start_banner.jpg', caption=welcome_caption, parse_mode='HTML')
+                    send_photo(chat_id, 'start_banner.jpg', caption=welcome_caption, parse_mode='HTML', message_effect_id='5046509860389126442')
                 except Exception as e:
                     logger.error(f"Failed to send banner image: {e}")
             show_account_selection()
