@@ -136,15 +136,14 @@ def load_data():
     return {'accounts': [], 'account_types': {}, 'prices': {}}
 
 def save_data():
-    """Save accounts data — both file and Telegram storage on Vercel."""
+    """Save accounts data — both file and Telegram storage."""
     try:
         with open(DATA_FILE, 'w', encoding='utf-8') as f:
             json.dump(accounts_data, f, ensure_ascii=False, indent=2)
         logger.info(f"Saved accounts data to {DATA_FILE}")
     except Exception as e:
         logger.error(f"Failed to save data to file: {e}")
-    if IS_VERCEL:
-        _tg_save()
+    _tg_save()
 
 def load_sessions():
     """Load user sessions from file (needed for Vercel stateless env)."""
