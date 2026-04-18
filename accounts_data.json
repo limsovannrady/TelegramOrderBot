@@ -2,6 +2,12 @@
   "accounts": [
     {
       "email": "l1jebywyzos2@10mail.info"
+    },
+    {
+      "email": "l1jebywyzos2@10mail.info"
+    },
+    {
+      "email": "abc123@gmail.com"
     }
   ],
   "account_types": {
@@ -9,9 +15,18 @@
       {
         "email": "l1jebywyzos2@10mail.info"
       }
+    ],
+    "65": [
+      {
+        "email": "l1jebywyzos2@10mail.info"
+      },
+      {
+        "email": "abc123@gmail.com"
+      }
     ]
   },
   "prices": {
-    "The best way": 0.01
+    "The best way": 0.01,
+    "65": 0.01
   }
 }
