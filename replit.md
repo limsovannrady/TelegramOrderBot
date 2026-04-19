@@ -16,6 +16,7 @@ The application follows a simple HTTP-based architecture:
 - **Configuration Management**: Configuration is embedded in the main file for simplicity
 - **Logging Strategy**: File-based and console logging with UTF-8 support for Khmer text
 - **API Integration**: Uses `requests` library for direct HTTP communication with Telegram Bot API
+- **Concurrency Model**: Uses a bounded worker pool for Telegram updates and a separate background pool for non-critical database/message cleanup tasks.
 
 The architecture avoids complex library dependencies and ensures reliable operation through direct API usage.
 
@@ -26,6 +27,7 @@ The architecture avoids complex library dependencies and ensures reliable operat
 - **send_message()**: Direct API message sending
 - **get_updates()**: Polling for new messages
 - **send_start_banner()**: Sends the welcome banner and reuses Telegram's cached file ID after the first upload for faster `/start` responses.
+- **Thread-local Reply Context**: Keeps reply targets isolated per worker so concurrent users do not affect each other's replies.
 
 ### User Commands
 - **/start**: Available to all users, sends Khmer account selection message with inline keyboard
@@ -63,6 +65,7 @@ The architecture avoids complex library dependencies and ensures reliable operat
 - **user_sessions**: Tracks conversation state for multi-step workflows
 - **accounts_data**: Stores account information, types, and pricing
 - `/start` clears stale user purchase sessions before showing the account selection menu.
+- Non-critical session saves run in the background to keep customer-facing responses fast.
 
 ### Logging System
 - **Dual Output**: Logs to both console (stdout) and file (`bot.log`)

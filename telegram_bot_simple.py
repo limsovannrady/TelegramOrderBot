@@ -11,6 +11,7 @@ import io
 import threading
 import hashlib
 import fcntl
+from concurrent.futures import ThreadPoolExecutor
 from urllib.parse import urlparse
 from urllib.parse import quote as url_quote
 from bakong_khqr import KHQR
@@ -33,6 +34,9 @@ API_URL = f"https://api.telegram.org/bot{BOT_TOKEN}"
 # Persistent HTTP session — reuses TCP connections for faster Telegram API calls
 http = requests.Session()
 http.headers.update({'Connection': 'keep-alive'})
+worker_pool = ThreadPoolExecutor(max_workers=12)
+background_pool = ThreadPoolExecutor(max_workers=4)
+_data_lock = threading.RLock()
 
 # Bakong KHQR configuration — token loaded from secret
 BAKONG_TOKEN = os.environ.get("BAKONG_TOKEN", "")
@@ -317,10 +321,34 @@ def load_sessions():
 def save_sessions():
     """Save user sessions to Neon via HTTP API."""
     try:
+        with _data_lock:
+            payload = {str(k): v for k, v in user_sessions.items()}
         _neon_query("UPDATE bot_sessions SET data = $1",
-                    [json.dumps({str(k): v for k, v in user_sessions.items()}, ensure_ascii=False)])
+                    [json.dumps(payload, ensure_ascii=False)])
     except Exception as e:
         logger.error(f"Failed to save sessions to DB: {e}")
+
+def _run_background(name, func, *args, **kwargs):
+    def runner():
+        try:
+            func(*args, **kwargs)
+        except Exception as e:
+            logger.error(f"Background task {name} failed: {type(e).__name__}: {e}")
+    background_pool.submit(runner)
+
+def save_sessions_async():
+    _run_background("save_sessions", save_sessions)
+
+def delete_message_async(chat_id, message_id):
+    if not message_id:
+        return
+    _run_background(
+        "delete_message",
+        http.post,
+        f"{API_URL}/deleteMessage",
+        data={'chat_id': chat_id, 'message_id': message_id},
+        timeout=4
+    )
 
 def save_pending_payment(user_id, chat_id, session):
     """Save a pending payment to Neon DB so it persists across sessions."""
@@ -385,9 +413,15 @@ accounts_data = load_data()
 # Always load persisted sessions on startup
 load_sessions()
 
-# Tracks the current user message_id so all send_message calls auto-reply-quote it
-_reply_to_id = None
+# Tracks the current user message_id per worker so replies never cross between users
+_reply_context = threading.local()
 START_BANNER_FILE_ID = os.environ.get("START_BANNER_FILE_ID", "")
+
+def _set_reply_to_id(message_id):
+    _reply_context.message_id = message_id
+
+def _get_reply_to_id():
+    return getattr(_reply_context, 'message_id', None)
 
 def _type_callback_id(account_type):
     return hashlib.sha1(account_type.encode('utf-8')).hexdigest()[:12]
@@ -410,7 +444,7 @@ def send_message(chat_id, text, reply_to_message_id=None, parse_mode=None, reply
         'text': text
     }
     
-    effective_reply_to = _reply_to_id if reply_to_message_id is None else reply_to_message_id
+    effective_reply_to = _get_reply_to_id() if reply_to_message_id is None else reply_to_message_id
     if effective_reply_to:
         data['reply_to_message_id'] = effective_reply_to
     
@@ -578,8 +612,7 @@ def show_account_selection(chat_id):
 
 def handle_callback_query(update):
     """Handle callback query (inline button clicks)."""
-    global _reply_to_id
-    _reply_to_id = None
+    _set_reply_to_id(None)
     try:
         callback_query = update.get('callback_query')
         if not callback_query:
@@ -605,19 +638,21 @@ def handle_callback_query(update):
             
             # Check if account type exists and has stock
             if account_type in accounts_data['account_types']:
-                accounts = accounts_data['account_types'][account_type]
-                count = len(accounts)
-                price = accounts_data['prices'].get(account_type, 0)
+                with _data_lock:
+                    accounts = accounts_data['account_types'][account_type]
+                    count = len(accounts)
+                    price = accounts_data['prices'].get(account_type, 0)
                 
                 if count > 0:
                     # Always allow user to select account type (reset any existing session)
-                    user_sessions[user_id] = {
-                        'state': 'waiting_for_quantity',
-                        'account_type': account_type,
-                        'price': price,
-                        'available_count': count
-                    }
-                    save_sessions()
+                    with _data_lock:
+                        user_sessions[user_id] = {
+                            'state': 'waiting_for_quantity',
+                            'account_type': account_type,
+                            'price': price,
+                            'available_count': count
+                        }
+                    save_sessions_async()
                     
                     # Create regular message without reply quote
                     reply_message = f"មាន {count} នៅក្នុងស្តុក\n"
@@ -627,13 +662,7 @@ def handle_callback_query(update):
                     send_message(chat_id, reply_message, parse_mode="Markdown")
                     
                     # Delete the original message with inline buttons
-                    original_message_id = callback_query['message']['message_id']
-                    delete_url = f"{API_URL}/deleteMessage"
-                    delete_data = {
-                        'chat_id': chat_id,
-                        'message_id': original_message_id
-                    }
-                    http.post(delete_url, data=delete_data, timeout=5)
+                    delete_message_async(chat_id, callback_query['message']['message_id'])
                     
                     logger.info(f"User {user_id} selected account type {account_type}, waiting for quantity input")
                 else:
@@ -655,11 +684,11 @@ def handle_callback_query(update):
                 answer_callback(callback_query['id'], 'មិនមានការទិញដែលកំពុងរង់ចាំ។', True)
                 return
             answer_callback(callback_query['id'], 'កំពុងបង្កើត QR...')
-            session['state'] = 'payment_pending'
+            with _data_lock:
+                session['state'] = 'payment_pending'
             # Delete the summary message
             summary_message_id = callback_query['message']['message_id']
-            http.post(f"{API_URL}/deleteMessage",
-                          data={'chat_id': chat_id, 'message_id': summary_message_id}, timeout=5)
+            delete_message_async(chat_id, summary_message_id)
             try:
                 img_bytes, md5_or_err, qr_string = generate_payment_qr(session['total_price'])
                 if not img_bytes:
@@ -677,8 +706,10 @@ def handle_callback_query(update):
                         send_message(ADMIN_ID,
                             f"⚠️ *QR Error (user {user_id}):*\n`{err_detail}`",
                             parse_mode="Markdown")
-                    del user_sessions[user_id]
-                    save_sessions()
+                    with _data_lock:
+                        if user_id in user_sessions:
+                            del user_sessions[user_id]
+                    save_sessions_async()
                     return
                 md5_hash = md5_or_err
                 session['md5_hash'] = md5_hash
@@ -689,14 +720,16 @@ def handle_callback_query(update):
                 )
                 if qr_response and qr_response.get('result'):
                     session['qr_message_id'] = qr_response['result']['message_id']
-                save_sessions()
+                save_sessions_async()
                 save_pending_payment(user_id, chat_id, session)
                 logger.info(f"Generated QR for user {user_id}: Amount ${session['total_price']}, MD5: {md5_hash}")
             except Exception as e:
                 logger.error(f"Error generating KHQR: {type(e).__name__}: {e}")
                 send_message(chat_id, "❌ *មានបញ្ហាក្នុងការបង្កើត QR Code*\n\nសូមព្យាយាមម្តងទៀត។", parse_mode="Markdown")
-                del user_sessions[user_id]
-                save_sessions()
+                with _data_lock:
+                    if user_id in user_sessions:
+                        del user_sessions[user_id]
+                save_sessions_async()
             return
 
         # Admin: delete type — step 1: show confirmation
@@ -734,9 +767,7 @@ def handle_callback_query(update):
                 if a.get('type') != type_name
             ]
             save_data()
-            http.post(f"{API_URL}/deleteMessage",
-                          data={'chat_id': chat_id,
-                                'message_id': callback_query['message']['message_id']}, timeout=5)
+            delete_message_async(chat_id, callback_query['message']['message_id'])
             send_message(chat_id,
                 f"✅ <b>បានលុបប្រភេទ Account <code>{type_name}</code> ចំនួន {count} records ដោយជោគជ័យ!</b>",
                 parse_mode="HTML", reply_to_message_id=None)
@@ -746,9 +777,7 @@ def handle_callback_query(update):
         # Admin: delete type — cancelled
         elif callback_data == 'dtcancel' and user_id == ADMIN_ID:
             answer_callback(callback_query['id'])
-            http.post(f"{API_URL}/deleteMessage",
-                          data={'chat_id': chat_id,
-                                'message_id': callback_query['message']['message_id']}, timeout=5)
+            delete_message_async(chat_id, callback_query['message']['message_id'])
             send_message(chat_id, "🚫 <b>បានបោះបង់ការលុបប្រភេទ Account</b>",
                          parse_mode="HTML", reply_to_message_id=None)
             return
@@ -756,12 +785,12 @@ def handle_callback_query(update):
         # Handle cancel buy — cancel from summary screen (before QR)
         elif callback_data == 'cancel_buy':
             answer_callback(callback_query['id'])
-            if user_id in user_sessions:
-                del user_sessions[user_id]
-            save_sessions()
+            with _data_lock:
+                if user_id in user_sessions:
+                    del user_sessions[user_id]
+            save_sessions_async()
             summary_message_id = callback_query['message']['message_id']
-            http.post(f"{API_URL}/deleteMessage",
-                          data={'chat_id': chat_id, 'message_id': summary_message_id}, timeout=5)
+            delete_message_async(chat_id, summary_message_id)
             send_message(chat_id, "🚫 *បានបោះបង់ការទិញ*", parse_mode="Markdown")
             show_account_selection(chat_id)
             return
@@ -785,7 +814,7 @@ def handle_callback_query(update):
                 answer_callback(callback_query['id'], '✅ ការបង់ប្រាក់បានបញ្ជាក់!')
                 deliver_accounts(chat_id, user_id, session)
                 delete_pending_payment(user_id)
-                save_sessions()
+                save_sessions_async()
             else:
                 answer_callback(callback_query['id'], '⏳ មិនទាន់បានទទួលការបង់ប្រាក់។ សូមព្យាយាមម្តងទៀត។', True)
             return
@@ -796,11 +825,11 @@ def handle_callback_query(update):
             session = user_sessions.get(user_id)
             qr_message_id = session.get('qr_message_id') if session else None
             if qr_message_id:
-                http.post(f"{API_URL}/deleteMessage",
-                              data={'chat_id': chat_id, 'message_id': qr_message_id}, timeout=5)
-            if user_id in user_sessions:
-                del user_sessions[user_id]
-            save_sessions()
+                delete_message_async(chat_id, qr_message_id)
+            with _data_lock:
+                if user_id in user_sessions:
+                    del user_sessions[user_id]
+            save_sessions_async()
             delete_pending_payment(user_id)
             send_message(chat_id, "🚫 *បានបោះបង់ការទិញ*", parse_mode="Markdown")
             show_account_selection(chat_id)
@@ -810,7 +839,6 @@ def handle_callback_query(update):
 
 def handle_message(update):
     """Handle incoming message."""
-    global _reply_to_id
     try:
         # Handle callback queries first
         if 'callback_query' in update:
@@ -828,7 +856,7 @@ def handle_message(update):
         user_id = user.get('id')
         
         # Set reply-quote context for all send_message calls in this handler
-        _reply_to_id = message_id
+        _set_reply_to_id(message_id)
         
         logger.info(f"Received message from user {user.get('first_name', 'Unknown')} (ID: {user_id}): {text}")
         
@@ -838,9 +866,12 @@ def handle_message(update):
 
         if text.strip() == '/start':
             logger.info(f"User {user_id} triggered account selection interface")
-            if user_id in user_sessions:
-                del user_sessions[user_id]
-                save_sessions()
+            with _data_lock:
+                had_session = user_id in user_sessions
+                if had_session:
+                    del user_sessions[user_id]
+            if had_session:
+                save_sessions_async()
             try:
                 welcome_caption = '<tg-emoji emoji-id="5967385500447675533">🎉</tg-emoji> <b>សូមស្វាគមន៍ Sovannrady</b>'
                 send_start_banner(chat_id, caption=welcome_caption, parse_mode='HTML', message_effect_id='5046509860389126442')
@@ -855,8 +886,9 @@ def handle_message(update):
 
             # Handle stale payment_pending session — silently clear and show menu
             if session.get('state') == 'payment_pending':
-                del user_sessions[user_id]
-                save_sessions()
+                with _data_lock:
+                    del user_sessions[user_id]
+                save_sessions_async()
                 show_account_selection(chat_id)
                 return
 
@@ -876,10 +908,11 @@ def handle_message(update):
                     total_price = quantity * session['price']
                     
                     # Update session with purchase details, wait for confirmation
-                    session['quantity'] = quantity
-                    session['total_price'] = total_price
-                    session['state'] = 'waiting_for_confirmation'
-                    save_sessions()
+                    with _data_lock:
+                        session['quantity'] = quantity
+                        session['total_price'] = total_price
+                        session['state'] = 'waiting_for_confirmation'
+                    save_sessions_async()
                     
                     # Show order summary with confirm/cancel buttons
                     confirm_keyboard = {
@@ -933,7 +966,9 @@ def handle_message(update):
 
             # Handle /add_account command
             if text.strip() == '/add_account':
-                user_sessions[user_id] = {'state': 'waiting_for_accounts'}
+                with _data_lock:
+                    user_sessions[user_id] = {'state': 'waiting_for_accounts'}
+                save_sessions_async()
                 send_message(chat_id, "*បញ្ចូល Account សម្រាប់លក់ (អ៊ីមែលម្តងមួយបន្ទាត់)៖*\n\n```\nl1jebywyzos2@10mail.info\nabc123@gmail.com\n```", reply_to_message_id=message_id, parse_mode="Markdown")
                 return
             
@@ -953,8 +988,10 @@ def handle_message(update):
                             accounts.append({'email': email})
                     
                     if accounts:
-                        session['accounts'] = accounts
-                        session['state'] = 'waiting_for_account_type'
+                        with _data_lock:
+                            session['accounts'] = accounts
+                            session['state'] = 'waiting_for_account_type'
+                        save_sessions_async()
                         count = len(accounts)
                         send_message(chat_id, f"*បានបញ្ចូល Account ចំនួន {count}\n\nសូមបញ្ចូលប្រភេទ Account៖*", reply_to_message_id=message_id, parse_mode="Markdown")
                     else:
@@ -962,8 +999,10 @@ def handle_message(update):
                     return
                 
                 elif session['state'] == 'waiting_for_account_type':
-                    session['account_type'] = text.strip()
-                    session['state'] = 'waiting_for_price'
+                    with _data_lock:
+                        session['account_type'] = text.strip()
+                        session['state'] = 'waiting_for_price'
+                    save_sessions_async()
                     send_message(chat_id, f"*សូមដាក់តម្លៃក្នុងប្រភេទ Account {text.strip()}*", reply_to_message_id=message_id, parse_mode="Markdown")
                     return
                 
@@ -976,13 +1015,14 @@ def handle_message(update):
                         count = len(accounts)
                         
                         # Save to storage
-                        accounts_data['accounts'].extend(accounts)
-                        accounts_data['account_types'][account_type] = accounts
-                        accounts_data['prices'][account_type] = price
+                        with _data_lock:
+                            accounts_data['accounts'].extend(accounts)
+                            accounts_data['account_types'][account_type] = accounts
+                            accounts_data['prices'][account_type] = price
+                            if user_id in user_sessions:
+                                del user_sessions[user_id]
                         save_data()
-                        
-                        # Clear session
-                        del user_sessions[user_id]
+                        save_sessions_async()
                         
                         # Send confirmation with keyboard
                         send_message(chat_id, f"*✅ បានបញ្ចូល Account ដោយជោគជ័យ*\n\n```\n🔹 ចំនួន: {count}\n\n🔹 ប្រភេទ: {account_type}\n\n🔹 តម្លៃ: {price}$\n```", reply_to_message_id=message_id, parse_mode="Markdown")
@@ -996,7 +1036,8 @@ def handle_message(update):
             # If admin sent a message but it's not a recognized command or part of workflow
             # Clear any existing session and show account selection interface
             if user_id in user_sessions:
-                del user_sessions[user_id]
+                with _data_lock:
+                    del user_sessions[user_id]
                 logger.info(f"Cleared session for admin {user_id} due to unrecognized command")
             
             # Show account selection interface for any unrecognized admin input
@@ -1023,23 +1064,33 @@ def deliver_accounts(chat_id, user_id, session):
     # Delete QR code message
     qr_message_id = session.get('qr_message_id')
     if qr_message_id:
-        http.post(f"{API_URL}/deleteMessage",
-                      data={'chat_id': chat_id, 'message_id': qr_message_id}, timeout=5)
+        delete_message_async(chat_id, qr_message_id)
 
-    if account_type not in accounts_data['account_types']:
-        send_message(chat_id, f"❌ *មានបញ្ហា!*\n\nគ្មាន Account ប្រភេទ {account_type} ក្នុងស្តុក។",
-                     parse_mode="Markdown")
+    with _data_lock:
+        if account_type not in accounts_data['account_types']:
+            available_count = None
+            delivered_accounts = None
+        else:
+            available_accounts = accounts_data['account_types'][account_type]
+            available_count = len(available_accounts)
+            if available_count < quantity:
+                delivered_accounts = None
+            else:
+                delivered_accounts = available_accounts[:quantity]
+                accounts_data['account_types'][account_type] = available_accounts[quantity:]
+                if user_id in user_sessions:
+                    del user_sessions[user_id]
+
+    if delivered_accounts is None:
+        if available_count is None:
+            send_message(chat_id, f"❌ *មានបញ្ហា!*\n\nគ្មាន Account ប្រភេទ {account_type} ក្នុងស្តុក។",
+                         parse_mode="Markdown")
+        else:
+            send_message(chat_id,
+                         f"❌ *មានបញ្ហា!*\n\nសុំទោស! មានត្រឹមតែ {available_count} Accounts នៅក្នុងស្តុក។",
+                         parse_mode="Markdown")
         return
 
-    available_accounts = accounts_data['account_types'][account_type]
-    if len(available_accounts) < quantity:
-        send_message(chat_id,
-                     f"❌ *មានបញ្ហា!*\n\nសុំទោស! មានត្រឹមតែ {len(available_accounts)} Accounts នៅក្នុងស្តុក។",
-                     parse_mode="Markdown")
-        return
-
-    delivered_accounts = available_accounts[:quantity]
-    accounts_data['account_types'][account_type] = available_accounts[quantity:]
     save_data()
 
     accounts_message = f'<tg-emoji emoji-id="5436040291507247633">🎉</tg-emoji> <b>ការទិញបានបញ្ជាក់ដោយជោគជ័យ</b>\n\n'
@@ -1055,8 +1106,7 @@ def deliver_accounts(chat_id, user_id, session):
 
     send_message(chat_id, accounts_message, parse_mode="HTML", message_effect_id="5046509860389126442")
 
-    if user_id in user_sessions:
-        del user_sessions[user_id]
+    save_sessions_async()
 
     logger.info(f"Payment confirmed and {quantity} accounts delivered to user {user_id}")
 
@@ -1113,7 +1163,7 @@ def main():
             consecutive_409 = 0  # reset on success
             for update in updates.get('result', []):
                 offset = update['update_id'] + 1
-                threading.Thread(target=handle_message, args=(update,), daemon=True).start()
+                worker_pool.submit(handle_message, update)
                 
         except requests.exceptions.HTTPError as e:
             if e.response is not None and e.response.status_code == 409:
