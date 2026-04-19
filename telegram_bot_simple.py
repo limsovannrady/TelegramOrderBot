@@ -11,19 +11,13 @@ import io
 from urllib.parse import quote as url_quote
 from bakong_khqr import KHQR
 
-# Detect Vercel environment - use /tmp for writable storage
-IS_VERCEL = os.environ.get('VERCEL') == '1'
-DATA_DIR = '/tmp' if IS_VERCEL else '.'
+DATA_DIR = '.'
 
 # Configure logging
-log_handlers = [logging.StreamHandler(sys.stdout)]
-if not IS_VERCEL:
-    log_handlers.append(logging.FileHandler('bot.log', encoding='utf-8'))
-
 logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
     level=logging.INFO,
-    handlers=log_handlers
+    handlers=[logging.StreamHandler(sys.stdout)]
 )
 
 logger = logging.getLogger(__name__)
