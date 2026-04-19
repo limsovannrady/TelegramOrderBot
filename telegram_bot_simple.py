@@ -388,6 +388,9 @@ accounts_data = load_data()
 # Always load persisted sessions on startup
 load_sessions()
 
+# Tracks the current user message_id so all send_message calls auto-reply-quote it
+_reply_to_id = None
+
 def send_message(chat_id, text, reply_to_message_id=None, parse_mode=None, reply_markup=None):
     """Send a message to a specific chat."""
     url = f"{API_URL}/sendMessage"
@@ -396,8 +399,9 @@ def send_message(chat_id, text, reply_to_message_id=None, parse_mode=None, reply
         'text': text
     }
     
-    if reply_to_message_id:
-        data['reply_to_message_id'] = reply_to_message_id
+    effective_reply_to = reply_to_message_id or _reply_to_id
+    if effective_reply_to:
+        data['reply_to_message_id'] = effective_reply_to
     
     if parse_mode:
         data['parse_mode'] = parse_mode
@@ -511,6 +515,8 @@ def show_account_selection(chat_id):
 
 def handle_callback_query(update):
     """Handle callback query (inline button clicks)."""
+    global _reply_to_id
+    _reply_to_id = None
     try:
         callback_query = update.get('callback_query')
         if not callback_query:
@@ -696,6 +702,7 @@ def handle_callback_query(update):
 
 def handle_message(update):
     """Handle incoming message."""
+    global _reply_to_id
     try:
         # Handle callback queries first
         if 'callback_query' in update:
@@ -711,6 +718,9 @@ def handle_message(update):
         text = message.get('text', '')
         user = message.get('from', {})
         user_id = user.get('id')
+        
+        # Set reply-quote context for all send_message calls in this handler
+        _reply_to_id = message_id
         
         logger.info(f"Received message from user {user.get('first_name', 'Unknown')} (ID: {user_id}): {text}")
         
