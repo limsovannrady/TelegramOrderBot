@@ -252,6 +252,18 @@ def _init_db():
                 data JSONB NOT NULL DEFAULT '{}'
             )
         """)
+        _neon_query("""
+            CREATE TABLE IF NOT EXISTS bot_pending_payments (
+                user_id BIGINT PRIMARY KEY,
+                chat_id BIGINT NOT NULL,
+                account_type TEXT,
+                quantity INT,
+                total_price NUMERIC,
+                md5_hash TEXT,
+                qr_message_id BIGINT,
+                created_at TIMESTAMPTZ DEFAULT NOW()
+            )
+        """)
         r = _neon_query("SELECT COUNT(*) as cnt FROM bot_accounts")
         if int(r['rows'][0]['cnt']) == 0:
             _neon_query("INSERT INTO bot_accounts (data) VALUES ($1)",
@@ -307,6 +319,58 @@ def save_sessions():
                     [json.dumps({str(k): v for k, v in user_sessions.items()}, ensure_ascii=False)])
     except Exception as e:
         logger.error(f"Failed to save sessions to DB: {e}")
+
+def save_pending_payment(user_id, chat_id, session):
+    """Save a pending payment to Neon DB so it persists across sessions."""
+    try:
+        _neon_query("""
+            INSERT INTO bot_pending_payments
+                (user_id, chat_id, account_type, quantity, total_price, md5_hash, qr_message_id)
+            VALUES ($1, $2, $3, $4, $5, $6, $7)
+            ON CONFLICT (user_id) DO UPDATE SET
+                chat_id = EXCLUDED.chat_id,
+                account_type = EXCLUDED.account_type,
+                quantity = EXCLUDED.quantity,
+                total_price = EXCLUDED.total_price,
+                md5_hash = EXCLUDED.md5_hash,
+                qr_message_id = EXCLUDED.qr_message_id,
+                created_at = NOW()
+        """, [
+            str(user_id), str(chat_id),
+            session.get('account_type'), str(session.get('quantity', 1)),
+            str(session.get('total_price', 0)), session.get('md5_hash'),
+            str(session.get('qr_message_id', 0))
+        ])
+        logger.info(f"Saved pending payment for user {user_id}")
+    except Exception as e:
+        logger.error(f"Failed to save pending payment: {e}")
+
+def get_pending_payment(user_id):
+    """Get a pending payment from Neon DB."""
+    try:
+        r = _neon_query("SELECT * FROM bot_pending_payments WHERE user_id = $1", [str(user_id)])
+        if r['rows']:
+            row = r['rows'][0]
+            return {
+                'state': 'payment_pending',
+                'account_type': row.get('account_type'),
+                'quantity': int(row.get('quantity') or 1),
+                'total_price': float(row.get('total_price') or 0),
+                'md5_hash': row.get('md5_hash'),
+                'qr_message_id': int(row.get('qr_message_id') or 0),
+                'chat_id': int(row.get('chat_id') or 0)
+            }
+    except Exception as e:
+        logger.error(f"Failed to get pending payment: {e}")
+    return None
+
+def delete_pending_payment(user_id):
+    """Delete a pending payment from Neon DB."""
+    try:
+        _neon_query("DELETE FROM bot_pending_payments WHERE user_id = $1", [str(user_id)])
+        logger.info(f"Deleted pending payment for user {user_id}")
+    except Exception as e:
+        logger.error(f"Failed to delete pending payment: {e}")
 
 _init_db()
 
@@ -551,6 +615,7 @@ def handle_callback_query(update):
                 if qr_response and qr_response.get('result'):
                     session['qr_message_id'] = qr_response['result']['message_id']
                 save_sessions()
+                save_pending_payment(user_id, chat_id, session)
                 logger.info(f"Generated QR for user {user_id}: Amount ${session['total_price']}, MD5: {md5_hash}")
             except Exception as e:
                 logger.error(f"Error generating KHQR: {type(e).__name__}: {e}")
@@ -579,6 +644,8 @@ def handle_callback_query(update):
         elif callback_data == 'check_payment':
             session = user_sessions.get(user_id)
             if not session or session.get('state') != 'payment_pending':
+                session = get_pending_payment(user_id)
+            if not session:
                 http.post(f"{API_URL}/answerCallbackQuery",
                               data={'callback_query_id': callback_query['id'],
                                     'text': 'មិនមានការទិញដែលកំពុងរង់ចាំ។', 'show_alert': True}, timeout=5)
@@ -597,6 +664,7 @@ def handle_callback_query(update):
                               data={'callback_query_id': callback_query['id'],
                                     'text': '✅ ការបង់ប្រាក់បានបញ្ជាក់!'}, timeout=5)
                 deliver_accounts(chat_id, user_id, session)
+                delete_pending_payment(user_id)
                 save_sessions()
             else:
                 http.post(f"{API_URL}/answerCallbackQuery",
@@ -615,6 +683,7 @@ def handle_callback_query(update):
             if user_id in user_sessions:
                 del user_sessions[user_id]
             save_sessions()
+            delete_pending_payment(user_id)
             send_message(chat_id, "🚫 *បានបោះបង់ការទិញ*", parse_mode="Markdown")
             show_account_selection(chat_id)
 
