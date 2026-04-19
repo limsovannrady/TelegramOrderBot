@@ -399,7 +399,7 @@ def send_message(chat_id, text, reply_to_message_id=None, parse_mode=None, reply
         'text': text
     }
     
-    effective_reply_to = reply_to_message_id or _reply_to_id
+    effective_reply_to = _reply_to_id if reply_to_message_id is None else reply_to_message_id
     if effective_reply_to:
         data['reply_to_message_id'] = effective_reply_to
     
@@ -508,7 +508,7 @@ def show_account_selection(chat_id):
         send_message(chat_id, "_សូមអភ័យទោស អស់ពីស្តុក 🪤_", parse_mode="Markdown")
         return
     send_message(chat_id, "សូមជ្រើសរើស Account ដើម្បីទិញ៖",
-                 reply_markup={'inline_keyboard': inline_buttons})
+                 reply_to_message_id=False, reply_markup={'inline_keyboard': inline_buttons})
 
 
 def handle_callback_query(update):
