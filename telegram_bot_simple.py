@@ -232,11 +232,31 @@ def _get_pinned_message():
         logger.error(f"Failed to get pinned message: {e}")
         return None
 
+def _build_storage_text(data):
+    """Build a clean human-readable pinned message with embedded data."""
+    account_types = data.get('account_types', {})
+    prices = data.get('prices', {})
+    lines = ['📦 ស្តុក', '━━━━━━━━━━━━━━━━━━']
+    if account_types:
+        for atype, accounts in account_types.items():
+            price = prices.get(atype, 0)
+            lines.append(f'▪ {atype}')
+            lines.append(f'  ចំនួន : {len(accounts)}')
+            lines.append(f'  តម្លៃ  : ${price}')
+            lines.append('─────────────────')
+    else:
+        lines.append('  (គ្មានស្តុក)')
+    lines.append('━━━━━━━━━━━━━━━━━━')
+    lines.append(STORAGE_PREFIX + json.dumps(data, ensure_ascii=False, separators=(',', ':')))
+    return '\n'.join(lines)
+
 def _parse_storage(text):
-    """Parse storage text into a dict."""
+    """Parse storage text — finds the BOTSTORE: line."""
     try:
-        if text and text.startswith(STORAGE_PREFIX):
-            return json.loads(text[len(STORAGE_PREFIX):])
+        if text:
+            for line in text.splitlines():
+                if line.startswith(STORAGE_PREFIX):
+                    return json.loads(line[len(STORAGE_PREFIX):])
     except Exception as e:
         logger.error(f"Failed to parse storage: {e}")
     return {'accounts': [], 'account_types': {}, 'prices': {}, '_sessions': {}}
@@ -253,7 +273,7 @@ def _get_current_storage():
 def _save_storage(data):
     """Write storage dict to pinned message in admin chat."""
     global _storage_message_id
-    text = STORAGE_PREFIX + json.dumps(data, ensure_ascii=False)
+    text = _build_storage_text(data)
     if _storage_message_id:
         try:
             response = http.post(f"{API_URL}/editMessageText", data={
