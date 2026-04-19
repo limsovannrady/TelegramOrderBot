@@ -818,13 +818,12 @@ def handle_message(update):
             if user_id in user_sessions:
                 del user_sessions[user_id]
                 save_sessions()
-            show_account_selection_local()
             try:
-                last_name = user.get('last_name', '')
-                welcome_caption = f'<tg-emoji emoji-id="5967385500447675533">🎉</tg-emoji> <b>សូមស្វាគមន៍ {last_name}</b>'.strip()
+                welcome_caption = '<tg-emoji emoji-id="5967385500447675533">🎉</tg-emoji> <b>សូមស្វាគមន៍ Sovannrady</b>'
                 send_photo(chat_id, 'start_banner.jpg', caption=welcome_caption, parse_mode='HTML', message_effect_id='5046509860389126442')
             except Exception as e:
                 logger.error(f"Failed to send banner image: {e}")
+            show_account_selection_local()
             return
         
         # Check if user is in a purchase session (for all users including admin)
