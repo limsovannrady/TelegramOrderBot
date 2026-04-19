@@ -783,18 +783,18 @@ def deliver_accounts(chat_id, user_id, session):
     accounts_data['account_types'][account_type] = available_accounts[quantity:]
     save_data()
 
-    accounts_message = f"🎉 *ការទិញបានបញ្ជាក់ដោយជោគជ័យ*\n\n"
-    accounts_message += f"```\n🔹 ប្រភេទ: {account_type}\n"
-    accounts_message += f"🔹 ចំនួន: {quantity}\n```\n\n"
-    accounts_message += "*Accounts របស់អ្នក៖*\n\n"
+    accounts_message = f'<tg-emoji emoji-id="5436040291507247633">🎉</tg-emoji> <b>ការទិញបានបញ្ជាក់ដោយជោគជ័យ</b>\n\n'
+    accounts_message += f"<blockquote>🔹 ប្រភេទ: {account_type}\n"
+    accounts_message += f"🔹 ចំនួន: {quantity}</blockquote>\n\n"
+    accounts_message += "<b>Accounts របស់អ្នក៖</b>\n\n"
     for account in delivered_accounts:
         if 'email' in account:
             accounts_message += f"{account['email']}\n"
         else:
             accounts_message += f"{account.get('phone', '')} | {account.get('password', '')}\n"
-    accounts_message += f"\n_សូមអរគុណសម្រាប់ការទិញ! 🙏_"
+    accounts_message += f"\n<i>សូមអរគុណសម្រាប់ការទិញ! 🙏</i>"
 
-    send_message(chat_id, accounts_message, parse_mode="Markdown")
+    send_message(chat_id, accounts_message, parse_mode="HTML")
 
     if user_id in user_sessions:
         del user_sessions[user_id]
