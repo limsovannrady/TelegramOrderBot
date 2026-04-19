@@ -149,14 +149,9 @@ def generate_payment_qr(amount):
             msg = f"create_qr failed: {type(e).__name__}: {e}"
             logger.error(msg)
             return None, msg, None
-        # Step 2: get MD5 from Bakong API (requires valid token + network)
-        try:
-            md5 = khqr_client.generate_md5(qr)
-            logger.info(f"MD5 generated: {md5}")
-        except Exception as e:
-            msg = f"generate_md5 failed: {type(e).__name__}: {e}"
-            logger.error(msg)
-            return None, msg, None
+        # Step 2: compute MD5 locally (hashlib.md5 of the QR string — same as the library)
+        md5 = compute_md5(qr)
+        logger.info(f"MD5 computed: {md5}")
         # Step 3: generate image with 3-layer fallback
         img_bytes = None
         # Layer 1: bakong-khqr library's styled image (requires Pillow)
@@ -195,13 +190,35 @@ def generate_payment_qr(amount):
         logger.error(f"Failed to generate payment QR: {msg}")
         return None, msg, None
 
+def _bakong_api_url():
+    """Return correct Bakong API base URL based on token prefix."""
+    if BAKONG_TOKEN and BAKONG_TOKEN.startswith("rbk"):
+        return "https://api.bakongrelay.com/v1"
+    return "https://api-bakong.nbc.gov.kh/v1"
+
+def compute_md5(qr: str) -> str:
+    """Compute MD5 of KHQR string locally (same algorithm the library uses)."""
+    import hashlib
+    return hashlib.md5(qr.encode('utf-8')).hexdigest()
+
 def check_payment_status(md5):
-    """Check payment via bakong-khqr library (auto-routes to bakongrelay.com for rbk tokens)."""
+    """Check payment directly against Bakong relay API — no library dependency."""
     try:
-        result = khqr_client.check_payment(md5)
-        return result == "PAID"
+        base = _bakong_api_url()
+        resp = requests.post(
+            f"{base}/check_transaction_by_md5",
+            json={"md5": md5},
+            headers={
+                "Authorization": f"Bearer {BAKONG_TOKEN}",
+                "Content-Type": "application/json",
+            },
+            timeout=10
+        )
+        data = resp.json()
+        logger.info(f"check_payment response: status={resp.status_code} body={data}")
+        return data.get("responseCode") == 0
     except Exception as e:
-        logger.error(f"Failed to check payment status: {e}")
+        logger.error(f"Failed to check payment status: {type(e).__name__}: {e}")
     return False
 
 # File paths - use /tmp on Vercel (read-only filesystem)
@@ -466,23 +483,14 @@ def send_photo_url(chat_id, photo_url, caption=None, parse_mode=None, reply_mark
         return None
 
 def get_updates(offset=None):
-    """Get updates from Telegram API."""
+    """Get updates from Telegram API. Raises HTTPError on 4xx/5xx so caller can handle 409."""
     url = f"{API_URL}/getUpdates"
-    params = {
-        'timeout': 30,
-        'limit': 100
-    }
-    
+    params = {'timeout': 30, 'limit': 100}
     if offset:
         params['offset'] = offset
-    
-    try:
-        response = requests.get(url, params=params, timeout=35)
-        response.raise_for_status()
-        return response.json()
-    except requests.RequestException as e:
-        logger.error(f"Failed to get updates: {e}")
-        return None
+    response = requests.get(url, params=params, timeout=35)
+    response.raise_for_status()
+    return response.json()
 
 def show_account_selection(chat_id):
     """Send the account selection inline keyboard to the given chat."""
@@ -939,6 +947,7 @@ def main():
     
     # Main polling loop
     offset = None
+    consecutive_409 = 0
     logger.info("Bot is now polling for updates...")
     
     while True:
@@ -949,6 +958,7 @@ def main():
                 time.sleep(1)
                 continue
             
+            consecutive_409 = 0  # reset on success
             for update in updates.get('result', []):
                 handle_message(update)
                 offset = update['update_id'] + 1
@@ -956,6 +966,20 @@ def main():
             if not updates.get('result'):
                 time.sleep(1)
                 
+        except requests.exceptions.HTTPError as e:
+            if e.response is not None and e.response.status_code == 409:
+                consecutive_409 += 1
+                if consecutive_409 % 10 == 1:
+                    logger.warning(f"409 Conflict (#{consecutive_409}) — webhook active on another server. Re-deleting webhook...")
+                    try:
+                        requests.post(f"{API_URL}/deleteWebhook", timeout=10)
+                        logger.info("Webhook re-deleted, resuming polling")
+                    except Exception as we:
+                        logger.warning(f"Could not re-delete webhook: {we}")
+                time.sleep(3)
+            else:
+                logger.error(f"HTTP error in main loop: {e}")
+                time.sleep(5)
         except KeyboardInterrupt:
             logger.info("Bot stopped by user")
             break
