@@ -412,7 +412,10 @@ def send_message(chat_id, text, reply_to_message_id=None, parse_mode=None, reply
         response.raise_for_status()
         return response.json()
     except requests.RequestException as e:
-        logger.error(f"Failed to send message: {e}")
+        body = ''
+        if hasattr(e, 'response') and e.response is not None:
+            body = e.response.text
+        logger.error(f"Failed to send message: {e} | body: {body}")
         return None
 
 def send_photo(chat_id, photo_path, caption=None, parse_mode=None, reply_markup=None, message_effect_id=None):
@@ -627,8 +630,8 @@ def handle_callback_query(update):
             return
 
         # Admin: delete type — step 1: show confirmation
-        elif callback_data.startswith('delete_type_select:') and user_id == ADMIN_ID:
-            type_name = callback_data.split(':', 1)[1]
+        elif callback_data.startswith('dts:') and user_id == ADMIN_ID:
+            type_name = callback_data[4:]
             if type_name not in accounts_data.get('account_types', {}):
                 http.post(f"{API_URL}/answerCallbackQuery",
                               data={'callback_query_id': callback_query['id'],
@@ -636,26 +639,23 @@ def handle_callback_query(update):
                 return
             count = len(accounts_data['account_types'].get(type_name, []))
             price = accounts_data.get('prices', {}).get(type_name, 0)
+            confirm_cb = f"dtc:{type_name}"[:64]
             keyboard = {'inline_keyboard': [[
-                {'text': '✅ បញ្ជាក់លុប', 'callback_data': f'delete_type_confirm:{type_name}'},
-                {'text': '❌ បោះបង់', 'callback_data': 'delete_type_cancel'}
+                {'text': '✅ បញ្ជាក់លុប', 'callback_data': confirm_cb},
+                {'text': '❌ បោះបង់', 'callback_data': 'dtcancel'}
             ]]}
-            http.post(f"{API_URL}/editMessageReplyMarkup",
-                          data={'chat_id': chat_id,
-                                'message_id': callback_query['message']['message_id'],
-                                'reply_markup': json.dumps(keyboard)}, timeout=5)
             send_message(chat_id,
-                f"⚠️ *តើអ្នកពិតជាចង់លុបប្រភេទ Account នេះមែនទេ?*\n\n"
-                f"```\n🔹 ប្រភេទ: {type_name}\n🔹 ចំនួន Account: {count}\n🔹 តម្លៃ: ${price}\n```\n\n"
+                f"⚠️ <b>តើអ្នកពិតជាចង់លុបប្រភេទ Account នេះមែនទេ?</b>\n\n"
+                f"<blockquote>🔹 ប្រភេទ: {type_name}\n🔹 ចំនួន Account: {count}\n🔹 តម្លៃ: ${price}</blockquote>\n\n"
                 f"Account ទាំងអស់ក្នុងប្រភេទនេះនឹងត្រូវបានលុបចោលជាអចិន្ត្រៃយ៍!",
-                parse_mode="Markdown", reply_markup=keyboard)
+                parse_mode="HTML", reply_to_message_id=None, reply_markup=keyboard)
             http.post(f"{API_URL}/answerCallbackQuery",
                           data={'callback_query_id': callback_query['id']}, timeout=5)
             return
 
         # Admin: delete type — step 2: confirmed, perform deletion
-        elif callback_data.startswith('delete_type_confirm:') and user_id == ADMIN_ID:
-            type_name = callback_data.split(':', 1)[1]
+        elif callback_data.startswith('dtc:') and user_id == ADMIN_ID:
+            type_name = callback_data[4:]
             if type_name not in accounts_data.get('account_types', {}):
                 http.post(f"{API_URL}/answerCallbackQuery",
                               data={'callback_query_id': callback_query['id'],
@@ -672,19 +672,20 @@ def handle_callback_query(update):
                           data={'chat_id': chat_id,
                                 'message_id': callback_query['message']['message_id']}, timeout=5)
             send_message(chat_id,
-                f"✅ *បានលុបប្រភេទ Account `{type_name}` ចំនួន {count} records ដោយជោគជ័យ!*",
-                parse_mode="Markdown")
+                f"✅ <b>បានលុបប្រភេទ Account <code>{type_name}</code> ចំនួន {count} records ដោយជោគជ័យ!</b>",
+                parse_mode="HTML", reply_to_message_id=None)
             http.post(f"{API_URL}/answerCallbackQuery",
                           data={'callback_query_id': callback_query['id']}, timeout=5)
             logger.info(f"Admin {user_id} deleted account type '{type_name}' ({count} records)")
             return
 
         # Admin: delete type — cancelled
-        elif callback_data == 'delete_type_cancel' and user_id == ADMIN_ID:
+        elif callback_data == 'dtcancel' and user_id == ADMIN_ID:
             http.post(f"{API_URL}/deleteMessage",
                           data={'chat_id': chat_id,
                                 'message_id': callback_query['message']['message_id']}, timeout=5)
-            send_message(chat_id, "🚫 *បានបោះបង់ការលុបប្រភេទ Account*", parse_mode="Markdown")
+            send_message(chat_id, "🚫 <b>បានបោះបង់ការលុបប្រភេទ Account</b>",
+                         parse_mode="HTML", reply_to_message_id=None)
             http.post(f"{API_URL}/answerCallbackQuery",
                           data={'callback_query_id': callback_query['id']}, timeout=5)
             return
@@ -864,15 +865,19 @@ def handle_message(update):
             if text.strip() == '/delete_type':
                 types = list(accounts_data.get('account_types', {}).keys())
                 if not types:
-                    send_message(chat_id, "⚠️ *មិនមានប្រភេទ Account ណាមួយទេ!*", parse_mode="Markdown")
+                    send_message(chat_id, "⚠️ <b>មិនមានប្រភេទ Account ណាមួយទេ!</b>",
+                                 parse_mode="HTML", reply_to_message_id=None)
                     return
                 rows = []
                 for t in types:
                     count = len(accounts_data['account_types'].get(t, []))
                     price = accounts_data.get('prices', {}).get(t, 0)
-                    rows.append([{'text': f"🗑 {t}  ({count} pcs · ${price})", 'callback_data': f"delete_type_select:{t}"}])
+                    label = f"{t} ({count} pcs · ${price})"
+                    cb = f"dts:{t}"[:64]
+                    rows.append([{'text': label, 'callback_data': cb}])
                 keyboard = {'inline_keyboard': rows}
-                send_message(chat_id, "*🗑 ជ្រើសរើសប្រភេទ Account ដែលចង់លុប៖*", parse_mode="Markdown", reply_markup=keyboard)
+                send_message(chat_id, "🗑 <b>ជ្រើសរើសប្រភេទ Account ដែលចង់លុប៖</b>",
+                             parse_mode="HTML", reply_to_message_id=None, reply_markup=keyboard)
                 return
 
             # Handle /add_account command
