@@ -615,10 +615,12 @@ def handle_callback_query(update):
                 session['qr_sent_at'] = time.time()
                 qr_response = send_photo_bytes(
                     chat_id, img_bytes,
-                    reply_markup=CHECK_PAYMENT_KEYBOARD
+                    reply_markup=STOCK_REPLY_KEYBOARD
                 )
                 if qr_response and qr_response.get('result'):
                     session['qr_message_id'] = qr_response['result']['message_id']
+                send_message(chat_id, "_បន្ទាប់ពីបង់ប្រាក់រួច សូមចុចប៊ូតុង ✅ ពិនិត្យការបង់ប្រាក់_",
+                             parse_mode="Markdown", reply_markup=CHECK_PAYMENT_KEYBOARD)
                 save_sessions()
                 logger.info(f"Generated QR for user {user_id}: Amount ${session['total_price']}, MD5: {md5_hash}")
             except Exception as e:
