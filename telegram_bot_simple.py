@@ -657,13 +657,10 @@ def handle_message(update):
         if user_id in user_sessions:
             session = user_sessions[user_id]
 
-            # Handle stale payment_pending session — user sent a new message without paying
+            # Handle stale payment_pending session — silently clear and show menu
             if session.get('state') == 'payment_pending':
                 del user_sessions[user_id]
                 save_sessions()
-                send_message(chat_id,
-                    "⚠️ <b>ការទូទាត់មុនមិនទាន់ជោគជ័យ</b>\n\nការទិញចាស់ត្រូវបានលុបចោលហើយ។",
-                    parse_mode="HTML")
                 show_account_selection(chat_id)
                 return
 
