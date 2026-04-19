@@ -501,7 +501,8 @@ def show_account_selection(chat_id):
             button_text = f"ទិញ {account_type} - មានក្នុងស្តុក {count}"
             inline_buttons.append([{'text': button_text, 'callback_data': f"buy_{account_type}"}])
     if not inline_buttons:
-        send_message(chat_id, "_សូមអភ័យទោស អស់ពីស្តុក 🪤_", parse_mode="Markdown")
+        send_message(chat_id, "_សូមអភ័យទោស អស់ពីស្តុក 🪤_", parse_mode="Markdown",
+                     reply_markup=STOCK_REPLY_KEYBOARD)
         return
     send_message(chat_id, "សូមជ្រើសរើស Account ដើម្បីទិញ៖",
                  reply_markup={'inline_keyboard': inline_buttons})
@@ -767,13 +768,19 @@ def handle_message(update):
         # Handle /start command, keyboard button, and invalid commands for all users
         if text.strip() == '/start':
             logger.info(f"User {user_id} triggered account selection interface")
-            if text.strip() == '/start':
-                try:
-                    last_name = user.get('last_name', '')
-                    welcome_caption = f'<tg-emoji emoji-id="5967385500447675533">🎉</tg-emoji> <b>សូមស្វាគមន៍ {last_name}</b>'.strip()
-                    send_photo(chat_id, 'start_banner.jpg', caption=welcome_caption, parse_mode='HTML', message_effect_id='5046509860389126442')
-                except Exception as e:
-                    logger.error(f"Failed to send banner image: {e}")
+            try:
+                last_name = user.get('last_name', '')
+                welcome_caption = f'<tg-emoji emoji-id="5967385500447675533">🎉</tg-emoji> <b>សូមស្វាគមន៍ {last_name}</b>'.strip()
+                send_photo(chat_id, 'start_banner.jpg', caption=welcome_caption, parse_mode='HTML', message_effect_id='5046509860389126442')
+            except Exception as e:
+                logger.error(f"Failed to send banner image: {e}")
+            send_message(chat_id, "👇 ចុចប៊ូតុងខាងក្រោម ដើម្បីឆែកស្តុក", reply_markup=STOCK_REPLY_KEYBOARD)
+            show_account_selection_local()
+            return
+        
+        # Handle "ឆែកស្តុក" reply keyboard button
+        if text.strip() in ('📦 ឆែកស្តុក', 'ឆែកស្តុក'):
+            logger.info(f"User {user_id} pressed ឆែកស្តុក keyboard button")
             show_account_selection_local()
             return
         
@@ -868,6 +875,12 @@ CHECK_PAYMENT_KEYBOARD = {
         [{'text': '✅ ពិនិត្យការបង់ប្រាក់', 'callback_data': 'check_payment'}],
         [{'text': '🚫 បោះបង់', 'callback_data': 'cancel_purchase'}]
     ]
+}
+
+STOCK_REPLY_KEYBOARD = {
+    'keyboard': [[{'text': '📦 ឆែកស្តុក'}]],
+    'resize_keyboard': True,
+    'persistent': True
 }
 
 def deliver_accounts(chat_id, user_id, session):
