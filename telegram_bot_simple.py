@@ -792,7 +792,7 @@ def deliver_accounts(chat_id, user_id, session):
             accounts_message += f"{account['email']}\n"
         else:
             accounts_message += f"{account.get('phone', '')} | {account.get('password', '')}\n"
-    accounts_message += f"\n<i>សូមអរគុណសម្រាប់ការទិញ! 🙏</i>"
+    accounts_message += f"\n<i>សូមអរគុណសម្រាប់ការទិញ <tg-emoji emoji-id=\"5897474556834091884\">🙏</tg-emoji></i>"
 
     send_message(chat_id, accounts_message, parse_mode="HTML")
 
