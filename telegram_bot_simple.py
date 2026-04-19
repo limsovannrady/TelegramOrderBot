@@ -44,28 +44,45 @@ def generate_payment_qr(amount):
     if not BAKONG_TOKEN:
         msg = "BAKONG_TOKEN មិនមានក្នុង environment"
         logger.error(msg)
-        return None, msg
+        return None, msg, None
     try:
         bill_number = f"TRX{int(time.time())}"
         # Step 1: generate the KHQR string (local, no network)
         try:
-            qr = khqr_client.create_qr(
-                bank_account='sovannrady@aclb',
-                merchant_name='RADY',
-                merchant_city='KPS',
-                amount=amount,
-                currency='USD',
-                store_label='RADY',
-                phone_number='85593330905',
-                bill_number=bill_number,
-                terminal_label='Cashier-01',
-                static=False
-            )
-            logger.info(f"KHQR string created, length={len(qr)}")
+            try:
+                qr = khqr_client.create_qr(
+                    bank_account='sovannrady@aclb',
+                    merchant_name='RADY',
+                    merchant_city='KPS',
+                    amount=amount,
+                    currency='USD',
+                    store_label='RADY',
+                    phone_number='85593330905',
+                    bill_number=bill_number,
+                    terminal_label='Cashier-01',
+                    static=False,
+                    expiration=1
+                )
+                logger.info("create_qr with expiration=1 succeeded")
+            except TypeError:
+                qr = khqr_client.create_qr(
+                    bank_account='sovannrady@aclb',
+                    merchant_name='RADY',
+                    merchant_city='KPS',
+                    amount=amount,
+                    currency='USD',
+                    store_label='RADY',
+                    phone_number='85593330905',
+                    bill_number=bill_number,
+                    terminal_label='Cashier-01',
+                    static=False
+                )
+                logger.info("create_qr without expiration succeeded (older library)")
+            logger.info(f"KHQR string created, length={len(qr)}, start={qr[:40]}")
         except Exception as e:
             msg = f"create_qr failed: {type(e).__name__}: {e}"
             logger.error(msg)
-            return None, msg
+            return None, msg, None
         # Step 2: get MD5 from Bakong API (requires valid token + network)
         try:
             md5 = khqr_client.generate_md5(qr)
@@ -73,7 +90,7 @@ def generate_payment_qr(amount):
         except Exception as e:
             msg = f"generate_md5 failed: {type(e).__name__}: {e}"
             logger.error(msg)
-            return None, msg
+            return None, msg, None
         # Step 3: generate image with 3-layer fallback
         img_bytes = None
         # Layer 1: bakong-khqr library's styled image (requires Pillow)
@@ -104,13 +121,13 @@ def generate_payment_qr(amount):
             except Exception as e3:
                 msg = f"all 3 QR image methods failed. Last: {type(e3).__name__}: {e3}"
                 logger.error(msg)
-                return None, msg
+                return None, msg, None
         logger.info(f"Generated KHQR for amount ${amount}, bill {bill_number}, md5 {md5}, size {len(img_bytes)}b")
-        return img_bytes, md5
+        return img_bytes, md5, qr
     except Exception as e:
         msg = f"Unexpected: {type(e).__name__}: {e}"
         logger.error(f"Failed to generate payment QR: {msg}")
-        return None, msg
+        return None, msg, None
 
 def check_payment_status(md5):
     """Check payment via bakong-khqr library (auto-routes to bakongrelay.com for rbk tokens)."""
@@ -490,7 +507,7 @@ def handle_callback_query(update):
             requests.post(f"{API_URL}/deleteMessage",
                           data={'chat_id': chat_id, 'message_id': summary_message_id}, timeout=5)
             try:
-                img_bytes, md5_or_err = generate_payment_qr(session['total_price'])
+                img_bytes, md5_or_err, qr_string = generate_payment_qr(session['total_price'])
                 if not img_bytes:
                     err_detail = md5_or_err or "មិនដឹងមូលហេតុ"
                     logger.error(f"QR generation returned None: {err_detail}")
@@ -503,7 +520,6 @@ def handle_callback_query(update):
                         send_message(chat_id,
                             "❌ *មានបញ្ហាក្នុងការបង្កើត QR Code*\n\nសូមព្យាយាមម្តងទៀត។",
                             parse_mode="Markdown")
-                        # Also alert admin
                         send_message(ADMIN_ID,
                             f"⚠️ *QR Error (user {user_id}):*\n`{err_detail}`",
                             parse_mode="Markdown")
@@ -515,9 +531,13 @@ def handle_callback_query(update):
                 md5_hash = md5_or_err
                 session['md5_hash'] = md5_hash
                 session['qr_sent_at'] = time.time()
+                # Admin sees the raw KHQR string for debugging
+                qr_caption = "_បន្ទាប់ពីបង់ប្រាក់រួច សូមចុចប៊ូតុង ✅ ពិនិត្យការបង់ប្រាក់។_"
+                if str(user_id) == str(ADMIN_ID) and qr_string:
+                    qr_caption += f"\n\n`[DEBUG] {qr_string[:60]}...`"
                 qr_response = send_photo_bytes(
                     chat_id, img_bytes,
-                    caption=f"_បន្ទាប់ពីបង់ប្រាក់រួច សូមចុចប៊ូតុង ✅ ពិនិត្យការបង់ប្រាក់។_",
+                    caption=qr_caption,
                     parse_mode="Markdown",
                     reply_markup=CHECK_PAYMENT_KEYBOARD
                 )
