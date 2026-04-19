@@ -626,6 +626,69 @@ def handle_callback_query(update):
                           data={'callback_query_id': callback_query['id']}, timeout=5)
             return
 
+        # Admin: delete type — step 1: show confirmation
+        elif callback_data.startswith('delete_type_select:') and user_id == ADMIN_ID:
+            type_name = callback_data.split(':', 1)[1]
+            if type_name not in accounts_data.get('account_types', {}):
+                http.post(f"{API_URL}/answerCallbackQuery",
+                              data={'callback_query_id': callback_query['id'],
+                                    'text': 'ប្រភេទនេះមិនមានទៀតហើយ!', 'show_alert': True}, timeout=5)
+                return
+            count = len(accounts_data['account_types'].get(type_name, []))
+            price = accounts_data.get('prices', {}).get(type_name, 0)
+            keyboard = {'inline_keyboard': [[
+                {'text': '✅ បញ្ជាក់លុប', 'callback_data': f'delete_type_confirm:{type_name}'},
+                {'text': '❌ បោះបង់', 'callback_data': 'delete_type_cancel'}
+            ]]}
+            http.post(f"{API_URL}/editMessageReplyMarkup",
+                          data={'chat_id': chat_id,
+                                'message_id': callback_query['message']['message_id'],
+                                'reply_markup': json.dumps(keyboard)}, timeout=5)
+            send_message(chat_id,
+                f"⚠️ *តើអ្នកពិតជាចង់លុបប្រភេទ Account នេះមែនទេ?*\n\n"
+                f"```\n🔹 ប្រភេទ: {type_name}\n🔹 ចំនួន Account: {count}\n🔹 តម្លៃ: ${price}\n```\n\n"
+                f"Account ទាំងអស់ក្នុងប្រភេទនេះនឹងត្រូវបានលុបចោលជាអចិន្ត្រៃយ៍!",
+                parse_mode="Markdown", reply_markup=keyboard)
+            http.post(f"{API_URL}/answerCallbackQuery",
+                          data={'callback_query_id': callback_query['id']}, timeout=5)
+            return
+
+        # Admin: delete type — step 2: confirmed, perform deletion
+        elif callback_data.startswith('delete_type_confirm:') and user_id == ADMIN_ID:
+            type_name = callback_data.split(':', 1)[1]
+            if type_name not in accounts_data.get('account_types', {}):
+                http.post(f"{API_URL}/answerCallbackQuery",
+                              data={'callback_query_id': callback_query['id'],
+                                    'text': 'ប្រភេទនេះមិនមានទៀតហើយ!', 'show_alert': True}, timeout=5)
+                return
+            count = len(accounts_data['account_types'].pop(type_name, []))
+            accounts_data.get('prices', {}).pop(type_name, None)
+            accounts_data['accounts'] = [
+                a for a in accounts_data.get('accounts', [])
+                if a.get('type') != type_name
+            ]
+            save_data()
+            http.post(f"{API_URL}/deleteMessage",
+                          data={'chat_id': chat_id,
+                                'message_id': callback_query['message']['message_id']}, timeout=5)
+            send_message(chat_id,
+                f"✅ *បានលុបប្រភេទ Account `{type_name}` ចំនួន {count} records ដោយជោគជ័យ!*",
+                parse_mode="Markdown")
+            http.post(f"{API_URL}/answerCallbackQuery",
+                          data={'callback_query_id': callback_query['id']}, timeout=5)
+            logger.info(f"Admin {user_id} deleted account type '{type_name}' ({count} records)")
+            return
+
+        # Admin: delete type — cancelled
+        elif callback_data == 'delete_type_cancel' and user_id == ADMIN_ID:
+            http.post(f"{API_URL}/deleteMessage",
+                          data={'chat_id': chat_id,
+                                'message_id': callback_query['message']['message_id']}, timeout=5)
+            send_message(chat_id, "🚫 *បានបោះបង់ការលុបប្រភេទ Account*", parse_mode="Markdown")
+            http.post(f"{API_URL}/answerCallbackQuery",
+                          data={'callback_query_id': callback_query['id']}, timeout=5)
+            return
+
         # Handle cancel buy — cancel from summary screen (before QR)
         elif callback_data == 'cancel_buy':
             if user_id in user_sessions:
@@ -797,6 +860,21 @@ def handle_message(update):
         
         # Admin-only commands
         if user_id == ADMIN_ID:
+            # Handle /delete_type command
+            if text.strip() == '/delete_type':
+                types = list(accounts_data.get('account_types', {}).keys())
+                if not types:
+                    send_message(chat_id, "⚠️ *មិនមានប្រភេទ Account ណាមួយទេ!*", parse_mode="Markdown")
+                    return
+                rows = []
+                for t in types:
+                    count = len(accounts_data['account_types'].get(t, []))
+                    price = accounts_data.get('prices', {}).get(t, 0)
+                    rows.append([{'text': f"🗑 {t}  ({count} pcs · ${price})", 'callback_data': f"delete_type_select:{t}"}])
+                keyboard = {'inline_keyboard': rows}
+                send_message(chat_id, "*🗑 ជ្រើសរើសប្រភេទ Account ដែលចង់លុប៖*", parse_mode="Markdown", reply_markup=keyboard)
+                return
+
             # Handle /add_account command
             if text.strip() == '/add_account':
                 user_sessions[user_id] = {'state': 'waiting_for_accounts'}
