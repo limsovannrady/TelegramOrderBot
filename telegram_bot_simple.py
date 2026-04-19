@@ -402,7 +402,17 @@ def send_message(chat_id, text, reply_to_message_id=None, parse_mode=None, reply
     if parse_mode:
         data['parse_mode'] = parse_mode
     
-    if reply_markup:
+    # Always show stock reply keyboard; if message has its own inline keyboard,
+    # send the reply keyboard in a silent preceding message first.
+    if reply_markup is None:
+        data['reply_markup'] = json.dumps(STOCK_REPLY_KEYBOARD)
+    else:
+        if 'inline_keyboard' in reply_markup:
+            requests.post(url, data={
+                'chat_id': chat_id,
+                'text': '\u3164',
+                'reply_markup': json.dumps(STOCK_REPLY_KEYBOARD)
+            }, timeout=10)
         data['reply_markup'] = json.dumps(reply_markup)
     
     try:
@@ -758,7 +768,6 @@ def handle_message(update):
                         f"🔹 ប្រភេទ: {session['account_type']}\n\n"
                         f"🔹 តម្លៃ: {total_price}$</blockquote>"
                     )
-                    send_message(chat_id, "\u3164", reply_markup=STOCK_REPLY_KEYBOARD)
                     send_message(chat_id, summary, parse_mode="HTML", reply_markup=confirm_keyboard)
                     return
                     
