@@ -1,5 +1,6 @@
 {
   "version": 2,
+  "installCommand": "pip install --no-cache-dir --upgrade -r requirements.txt",
   "builds": [
     {
       "src": "api/*.py",
