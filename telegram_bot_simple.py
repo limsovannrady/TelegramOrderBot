@@ -9,8 +9,9 @@ import json
 import os
 import io
 import threading
-import psycopg2
-import psycopg2.extras
+import pg8000.dbapi
+import ssl
+from urllib.parse import urlparse
 from urllib.parse import quote as url_quote
 from bakong_khqr import KHQR
 
@@ -223,8 +224,20 @@ def check_payment_status(md5):
 NEON_DATABASE_URL = os.environ.get("NEON_DATABASE_URL", "")
 
 def _get_db_conn():
-    """Get a Neon PostgreSQL connection."""
-    return psycopg2.connect(NEON_DATABASE_URL, sslmode='require', connect_timeout=10)
+    """Get a Neon PostgreSQL connection using pg8000."""
+    parsed = urlparse(NEON_DATABASE_URL)
+    ssl_ctx = ssl.create_default_context()
+    ssl_ctx.check_hostname = False
+    ssl_ctx.verify_mode = ssl.CERT_NONE
+    return pg8000.dbapi.connect(
+        host=parsed.hostname,
+        port=parsed.port or 5432,
+        database=parsed.path.lstrip('/').split('?')[0],
+        user=parsed.username,
+        password=parsed.password,
+        ssl_context=ssl_ctx,
+        timeout=10
+    )
 
 def _init_db():
     """Create tables if they don't exist."""
@@ -264,8 +277,11 @@ def load_data():
             row = cur.fetchone()
         conn.close()
         if row:
+            data = row[0]
+            if isinstance(data, str):
+                data = json.loads(data)
             logger.info("Loaded accounts data from Neon DB")
-            return row[0]
+            return data
     except Exception as e:
         logger.error(f"Failed to load data from DB: {e}")
     return {'accounts': [], 'account_types': {}, 'prices': {}}
@@ -292,7 +308,10 @@ def load_sessions():
             row = cur.fetchone()
         conn.close()
         if row:
-            user_sessions = {int(k): v for k, v in row[0].items()}
+            data = row[0]
+            if isinstance(data, str):
+                data = json.loads(data)
+            user_sessions = {int(k): v for k, v in data.items()}
             logger.info("Loaded sessions from Neon DB")
     except Exception as e:
         logger.error(f"Failed to load sessions from DB: {e}")
