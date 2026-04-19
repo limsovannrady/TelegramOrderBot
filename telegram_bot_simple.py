@@ -656,7 +656,21 @@ def handle_message(update):
         # Check if user is in a purchase session (for all users including admin)
         if user_id in user_sessions:
             session = user_sessions[user_id]
-            
+
+            # Handle stale payment_pending session — user sent a new message without paying
+            if session.get('state') == 'payment_pending':
+                qr_message_id = session.get('qr_message_id')
+                if qr_message_id:
+                    http.post(f"{API_URL}/deleteMessage",
+                              data={'chat_id': chat_id, 'message_id': qr_message_id}, timeout=5)
+                del user_sessions[user_id]
+                save_sessions()
+                send_message(chat_id,
+                    "⚠️ <b>ការទូទាត់មុនមិនទាន់ជោគជ័យ</b>\n\nការទិញចាស់ត្រូវបានលុបចោលហើយ។",
+                    parse_mode="HTML")
+                show_account_selection(chat_id)
+                return
+
             # Handle quantity input for purchase
             if session['state'] == 'waiting_for_quantity':
                 try:
