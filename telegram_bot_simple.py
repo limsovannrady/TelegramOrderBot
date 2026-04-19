@@ -9,6 +9,8 @@ import json
 import os
 import io
 import threading
+import psycopg2
+import psycopg2.extras
 from urllib.parse import quote as url_quote
 from bakong_khqr import KHQR
 
@@ -218,123 +220,95 @@ def check_payment_status(md5):
         logger.error(f"Failed to check payment status: {type(e).__name__}: {e}")
     return False
 
-STORAGE_CHAT_ID = ADMIN_ID
-STORAGE_PREFIX = 'BOTSTORE:'
-_storage_message_id = None
+NEON_DATABASE_URL = os.environ.get("NEON_DATABASE_URL", "")
 
-def _get_pinned_message():
-    """Fetch the pinned message from admin chat."""
+def _get_db_conn():
+    """Get a Neon PostgreSQL connection."""
+    return psycopg2.connect(NEON_DATABASE_URL, sslmode='require', connect_timeout=10)
+
+def _init_db():
+    """Create tables if they don't exist."""
     try:
-        response = http.post(f"{API_URL}/getChat", data={'chat_id': STORAGE_CHAT_ID}, timeout=10)
-        chat = response.json().get('result', {})
-        return chat.get('pinned_message')
+        conn = _get_db_conn()
+        with conn.cursor() as cur:
+            cur.execute("""
+                CREATE TABLE IF NOT EXISTS bot_accounts (
+                    id SERIAL PRIMARY KEY,
+                    data JSONB NOT NULL DEFAULT '{}'
+                )
+            """)
+            cur.execute("""
+                CREATE TABLE IF NOT EXISTS bot_sessions (
+                    id SERIAL PRIMARY KEY,
+                    data JSONB NOT NULL DEFAULT '{}'
+                )
+            """)
+            cur.execute("SELECT COUNT(*) FROM bot_accounts")
+            if cur.fetchone()[0] == 0:
+                cur.execute("INSERT INTO bot_accounts (data) VALUES (%s)", [json.dumps({'accounts': [], 'account_types': {}, 'prices': {}})])
+            cur.execute("SELECT COUNT(*) FROM bot_sessions")
+            if cur.fetchone()[0] == 0:
+                cur.execute("INSERT INTO bot_sessions (data) VALUES (%s)", [json.dumps({})])
+        conn.commit()
+        conn.close()
+        logger.info("Neon DB initialized")
     except Exception as e:
-        logger.error(f"Failed to get pinned message: {e}")
-        return None
-
-def _build_storage_text(data):
-    """Build a clean human-readable pinned message with embedded data."""
-    account_types = data.get('account_types', {})
-    prices = data.get('prices', {})
-    lines = ['📦 ស្តុក', '━━━━━━━━━━━━━━━━━━']
-    if account_types:
-        for atype, accounts in account_types.items():
-            price = prices.get(atype, 0)
-            lines.append(f'▪ {atype}')
-            lines.append(f'  ចំនួន : {len(accounts)}')
-            lines.append(f'  តម្លៃ  : ${price}')
-            lines.append('─────────────────')
-    else:
-        lines.append('  (គ្មានស្តុក)')
-    lines.append('━━━━━━━━━━━━━━━━━━')
-    lines.append(STORAGE_PREFIX + json.dumps(data, ensure_ascii=False, separators=(',', ':')))
-    return '\n'.join(lines)
-
-def _parse_storage(text):
-    """Parse storage text — finds the BOTSTORE: line."""
-    try:
-        if text:
-            for line in text.splitlines():
-                if line.startswith(STORAGE_PREFIX):
-                    return json.loads(line[len(STORAGE_PREFIX):])
-    except Exception as e:
-        logger.error(f"Failed to parse storage: {e}")
-    return {'accounts': [], 'account_types': {}, 'prices': {}, '_sessions': {}}
-
-def _get_current_storage():
-    """Load current storage dict from pinned message."""
-    global _storage_message_id
-    pinned = _get_pinned_message()
-    if pinned:
-        _storage_message_id = pinned.get('message_id')
-        return _parse_storage(pinned.get('text', ''))
-    return {'accounts': [], 'account_types': {}, 'prices': {}, '_sessions': {}}
-
-def _save_storage(data):
-    """Write storage dict to pinned message in admin chat."""
-    global _storage_message_id
-    text = _build_storage_text(data)
-    if _storage_message_id:
-        try:
-            response = http.post(f"{API_URL}/editMessageText", data={
-                'chat_id': STORAGE_CHAT_ID,
-                'message_id': _storage_message_id,
-                'text': text
-            }, timeout=10)
-            if response.json().get('ok'):
-                logger.info("Storage updated in Telegram pinned message")
-                return
-        except Exception:
-            pass
-    try:
-        response = http.post(f"{API_URL}/sendMessage", data={
-            'chat_id': STORAGE_CHAT_ID,
-            'text': text
-        }, timeout=10)
-        result = response.json()
-        if result.get('ok'):
-            msg_id = result['result']['message_id']
-            _storage_message_id = msg_id
-            http.post(f"{API_URL}/pinChatMessage", data={
-                'chat_id': STORAGE_CHAT_ID,
-                'message_id': msg_id,
-                'disable_notification': True
-            }, timeout=10)
-            logger.info("Storage created and pinned in Telegram admin chat")
-    except Exception as e:
-        logger.error(f"Failed to save storage: {e}")
+        logger.error(f"DB init failed: {e}")
 
 def load_data():
-    """Load accounts data from Telegram pinned message."""
-    storage = _get_current_storage()
-    logger.info("Loaded accounts data from Telegram storage")
-    return {
-        'accounts': storage.get('accounts', []),
-        'account_types': storage.get('account_types', {}),
-        'prices': storage.get('prices', {})
-    }
+    """Load accounts data from Neon database."""
+    try:
+        conn = _get_db_conn()
+        with conn.cursor() as cur:
+            cur.execute("SELECT data FROM bot_accounts LIMIT 1")
+            row = cur.fetchone()
+        conn.close()
+        if row:
+            logger.info("Loaded accounts data from Neon DB")
+            return row[0]
+    except Exception as e:
+        logger.error(f"Failed to load data from DB: {e}")
+    return {'accounts': [], 'account_types': {}, 'prices': {}}
 
 def save_data():
-    """Save accounts data to Telegram pinned message."""
-    storage = _get_current_storage()
-    storage['accounts'] = accounts_data.get('accounts', [])
-    storage['account_types'] = accounts_data.get('account_types', {})
-    storage['prices'] = accounts_data.get('prices', {})
-    _save_storage(storage)
+    """Save accounts data to Neon database."""
+    try:
+        conn = _get_db_conn()
+        with conn.cursor() as cur:
+            cur.execute("UPDATE bot_accounts SET data = %s", [json.dumps(accounts_data, ensure_ascii=False)])
+        conn.commit()
+        conn.close()
+        logger.info("Saved accounts data to Neon DB")
+    except Exception as e:
+        logger.error(f"Failed to save data to DB: {e}")
 
 def load_sessions():
-    """Load user sessions from Telegram pinned message."""
+    """Load user sessions from Neon database."""
     global user_sessions
-    storage = _get_current_storage()
-    sessions_raw = storage.get('_sessions', {})
-    user_sessions = {int(k): v for k, v in sessions_raw.items()}
-    logger.info("Loaded sessions from Telegram storage")
+    try:
+        conn = _get_db_conn()
+        with conn.cursor() as cur:
+            cur.execute("SELECT data FROM bot_sessions LIMIT 1")
+            row = cur.fetchone()
+        conn.close()
+        if row:
+            user_sessions = {int(k): v for k, v in row[0].items()}
+            logger.info("Loaded sessions from Neon DB")
+    except Exception as e:
+        logger.error(f"Failed to load sessions from DB: {e}")
 
 def save_sessions():
-    """Save user sessions to Telegram pinned message."""
-    storage = _get_current_storage()
-    storage['_sessions'] = {str(k): v for k, v in user_sessions.items()}
-    _save_storage(storage)
+    """Save user sessions to Neon database."""
+    try:
+        conn = _get_db_conn()
+        with conn.cursor() as cur:
+            cur.execute("UPDATE bot_sessions SET data = %s", [json.dumps({str(k): v for k, v in user_sessions.items()}, ensure_ascii=False)])
+        conn.commit()
+        conn.close()
+    except Exception as e:
+        logger.error(f"Failed to save sessions to DB: {e}")
+
+_init_db()
 
 # User session storage for tracking conversation state
 user_sessions = {}
