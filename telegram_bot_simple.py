@@ -758,6 +758,7 @@ def handle_message(update):
                         f"🔹 ប្រភេទ: {session['account_type']}\n\n"
                         f"🔹 តម្លៃ: {total_price}$</blockquote>"
                     )
+                    send_message(chat_id, "\u3164", reply_markup=STOCK_REPLY_KEYBOARD)
                     send_message(chat_id, summary, parse_mode="HTML", reply_markup=confirm_keyboard)
                     return
                     
