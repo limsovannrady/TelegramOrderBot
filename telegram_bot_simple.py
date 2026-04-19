@@ -225,121 +225,8 @@ def check_payment_status(md5):
 DATA_FILE = os.path.join(DATA_DIR, 'accounts_data.json')
 SESSIONS_FILE = os.path.join(DATA_DIR, 'sessions.json')
 
-TG_STORAGE_MARKER = "📦BOT_STORAGE📦\n"
-
-def _tg_load():
-    """Load data from pinned message in admin's chat (Telegram as storage)."""
-    try:
-        resp = requests.get(
-            f"https://api.telegram.org/bot{os.environ.get('TELEGRAM_BOT_TOKEN', '')}/getChat",
-            params={'chat_id': ADMIN_ID}, timeout=10
-        )
-        result = resp.json().get('result', {})
-        pinned = result.get('pinned_message')
-        if pinned:
-            text = pinned.get('text', '')
-            if text.startswith(TG_STORAGE_MARKER):
-                rest = text[len(TG_STORAGE_MARKER):]
-                # Try legacy JSON format first (only if content starts with { not [type|$price])
-                json_start = next((i for i, c in enumerate(rest) if c == '{'), None)
-                if json_start is not None:
-                    try:
-                        data = json.loads(rest[json_start:])
-                        logger.info("Loaded data from Telegram pinned message storage (JSON format)")
-                        return data
-                    except (json.JSONDecodeError, ValueError):
-                        logger.info("JSON parse failed, falling through to text format parser")
-                # Parse new grouped text format
-                data = {'accounts': [], 'account_types': {}, 'prices': {}}
-                current_type = None
-                # Find content after second separator line
-                lines = rest.splitlines()
-                sep_count = 0
-                content_lines = []
-                for line in lines:
-                    if line.startswith('━'):
-                        sep_count += 1
-                        continue
-                    if sep_count >= 2:
-                        content_lines.append(line)
-                for line in content_lines:
-                    line = line.strip()
-                    if not line:
-                        continue
-                    if line.startswith('[') and '|$' in line and line.endswith(']'):
-                        inner = line[1:-1]
-                        type_name, price_str = inner.rsplit('|$', 1)
-                        current_type = type_name
-                        try:
-                            price = float(price_str)
-                        except ValueError:
-                            price = 0.0
-                        data['account_types'][current_type] = []
-                        data['prices'][current_type] = price
-                    elif current_type and '@' in line:
-                        acc = {'email': line}
-                        data['accounts'].append(acc)
-                        data['account_types'][current_type].append(acc)
-                if data['account_types']:
-                    logger.info("Loaded data from Telegram pinned message storage (text format)")
-                    return data
-    except Exception as e:
-        logger.error(f"Failed to load from Telegram storage: {e}")
-    return None
-
-def _tg_save():
-    """Save data as pinned message in admin's chat (Telegram as storage)."""
-    try:
-        token = os.environ.get('TELEGRAM_BOT_TOKEN', '')
-        base = f"https://api.telegram.org/bot{token}"
-
-        total_accounts = sum(len(v) for v in accounts_data.get('account_types', {}).values())
-        total_types = len(accounts_data.get('account_types', {}))
-        prices = accounts_data.get('prices', {})
-        prices_lines = "\n".join(f"   • {t}: ${p}" for t, p in prices.items()) or "   • មិនមាន"
-
-        summary = (
-            f"━━━━━━━━━━━━━━━━━━━━\n"
-            f"📊 Account សរុប: {total_accounts}\n"
-            f"🗂 ប្រភេទ: {total_types}\n"
-            f"💰 តម្លៃ:\n{prices_lines}\n"
-            f"━━━━━━━━━━━━━━━━━━━━\n"
-        )
-        lines = []
-        for type_name, accs in accounts_data.get('account_types', {}).items():
-            price = accounts_data.get('prices', {}).get(type_name, 0)
-            lines.append(f"[{type_name}|${price}]")
-            for acc in accs:
-                lines.append(acc.get('email', ''))
-        accounts_text = "\n".join(lines)
-        text = TG_STORAGE_MARKER + summary + accounts_text
-
-        if len(text) > 4096:
-            logger.warning("Data too large for Telegram text storage, truncation risk")
-        msg_resp = requests.post(f"{base}/sendMessage",
-                                 data={'chat_id': ADMIN_ID, 'text': text}, timeout=10)
-        msg_data = msg_resp.json()
-        if msg_data.get('ok'):
-            msg_id = msg_data['result']['message_id']
-            requests.post(f"{base}/pinChatMessage",
-                          data={'chat_id': ADMIN_ID, 'message_id': msg_id,
-                                'disable_notification': True}, timeout=10)
-            logger.info(f"Saved data to Telegram storage (message {msg_id})")
-    except Exception as e:
-        logger.error(f"Failed to save to Telegram storage: {e}")
-
 def load_data():
-    """Load accounts data — Telegram storage on Vercel, file otherwise."""
-    if IS_VERCEL:
-        tg_data = _tg_load()
-        if tg_data:
-            # Also write to /tmp so within-instance calls are fast
-            try:
-                with open(DATA_FILE, 'w', encoding='utf-8') as f:
-                    json.dump(tg_data, f, ensure_ascii=False)
-            except Exception:
-                pass
-            return tg_data
+    """Load accounts data from local file."""
     if os.path.exists(DATA_FILE):
         try:
             with open(DATA_FILE, 'r', encoding='utf-8') as f:
@@ -351,14 +238,13 @@ def load_data():
     return {'accounts': [], 'account_types': {}, 'prices': {}}
 
 def save_data():
-    """Save accounts data — both file and Telegram storage."""
+    """Save accounts data to local file."""
     try:
         with open(DATA_FILE, 'w', encoding='utf-8') as f:
             json.dump(accounts_data, f, ensure_ascii=False, indent=2)
         logger.info(f"Saved accounts data to {DATA_FILE}")
     except Exception as e:
         logger.error(f"Failed to save data to file: {e}")
-    _tg_save()
 
 def load_sessions():
     """Load user sessions from file (needed for Vercel stateless env)."""
