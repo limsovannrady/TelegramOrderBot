@@ -276,7 +276,7 @@ load_sessions()
 # Tracks the current user message_id so all send_message calls auto-reply-quote it
 _reply_to_id = None
 
-def send_message(chat_id, text, reply_to_message_id=None, parse_mode=None, reply_markup=None):
+def send_message(chat_id, text, reply_to_message_id=None, parse_mode=None, reply_markup=None, message_effect_id=None):
     """Send a message to a specific chat."""
     url = f"{API_URL}/sendMessage"
     data = {
@@ -293,6 +293,9 @@ def send_message(chat_id, text, reply_to_message_id=None, parse_mode=None, reply
     
     if reply_markup:
         data['reply_markup'] = json.dumps(reply_markup)
+    
+    if message_effect_id:
+        data['message_effect_id'] = message_effect_id
     
     try:
         response = http.post(url, data=data, timeout=10)
@@ -794,7 +797,7 @@ def deliver_accounts(chat_id, user_id, session):
             accounts_message += f"{account.get('phone', '')} | {account.get('password', '')}\n"
     accounts_message += f"\n<i>សូមអរគុណសម្រាប់ការទិញ <tg-emoji emoji-id=\"5897474556834091884\">🙏</tg-emoji></i>"
 
-    send_message(chat_id, accounts_message, parse_mode="HTML")
+    send_message(chat_id, accounts_message, parse_mode="HTML", message_effect_id="5046509860389126442")
 
     if user_id in user_sessions:
         del user_sessions[user_id]
