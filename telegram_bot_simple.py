@@ -607,14 +607,13 @@ def handle_callback_query(update):
                 md5_hash = md5_or_err
                 session['md5_hash'] = md5_hash
                 session['qr_sent_at'] = time.time()
-                # Admin sees the raw KHQR string for debugging
+                # Send caption as a plain message so STOCK_REPLY_KEYBOARD appears automatically
                 qr_caption = "_បន្ទាប់ពីបង់ប្រាក់រួច សូមចុចប៊ូតុង ✅ ពិនិត្យការបង់ប្រាក់។_"
                 if str(user_id) == str(ADMIN_ID) and qr_string:
                     qr_caption += f"\n\n`[DEBUG] {qr_string[:60]}...`"
+                send_message(chat_id, qr_caption, parse_mode="Markdown")
                 qr_response = send_photo_bytes(
                     chat_id, img_bytes,
-                    caption=qr_caption,
-                    parse_mode="Markdown",
                     reply_markup=CHECK_PAYMENT_KEYBOARD
                 )
                 if qr_response and qr_response.get('result'):

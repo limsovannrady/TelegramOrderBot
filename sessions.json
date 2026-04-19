@@ -1,1 +1,1 @@
-{"5002402843": {"state": "payment_pending", "account_type": "The best way", "price": 0.01, "available_count": 1, "quantity": 1, "total_price": 0.01, "md5_hash": "a731957c38a486468ff9bfdea4e2b665", "qr_sent_at": 1776566863.7366714, "qr_message_id": 436}}
+{"5002402843": {"state": "waiting_for_confirmation", "account_type": "The best way", "price": 0.01, "available_count": 1, "quantity": 1, "total_price": 0.01}}
