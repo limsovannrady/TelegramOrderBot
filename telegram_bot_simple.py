@@ -8,6 +8,7 @@ import sys
 import json
 import os
 import io
+import threading
 from urllib.parse import quote as url_quote
 from bakong_khqr import KHQR
 
@@ -27,6 +28,10 @@ BOT_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN", "")
 KHMER_MESSAGE = "ជ្រើសរើស Account ដើម្បីបញ្ជាទិញ"
 ADMIN_ID = 5002402843
 API_URL = f"https://api.telegram.org/bot{BOT_TOKEN}"
+
+# Persistent HTTP session — reuses TCP connections for faster Telegram API calls
+http = requests.Session()
+http.headers.update({'Connection': 'keep-alive'})
 
 # Bakong KHQR configuration — token loaded from secret
 BAKONG_TOKEN = os.environ.get("BAKONG_TOKEN", "")
@@ -169,7 +174,7 @@ def generate_payment_qr(amount):
         if not img_bytes:
             try:
                 qr_api_url = f"https://api.qrserver.com/v1/create-qr-code/?size=500x500&data={url_quote(qr)}"
-                resp = requests.get(qr_api_url, timeout=10)
+                resp = http.get(qr_api_url, timeout=10)
                 resp.raise_for_status()
                 img_bytes = resp.content
                 logger.info("QR image generated via qrserver.com API")
@@ -199,7 +204,7 @@ def check_payment_status(md5):
     """Check payment directly against Bakong relay API — no library dependency."""
     try:
         base = _bakong_api_url()
-        resp = requests.post(
+        resp = http.post(
             f"{base}/check_transaction_by_md5",
             json={"md5": md5},
             headers={
@@ -290,7 +295,7 @@ def send_message(chat_id, text, reply_to_message_id=None, parse_mode=None, reply
         data['reply_markup'] = json.dumps(reply_markup)
     
     try:
-        response = requests.post(url, data=data, timeout=10)
+        response = http.post(url, data=data, timeout=10)
         response.raise_for_status()
         return response.json()
     except requests.RequestException as e:
@@ -319,7 +324,7 @@ def send_photo(chat_id, photo_path, caption=None, parse_mode=None, reply_markup=
     try:
         with open(photo_path, 'rb') as photo:
             files = {'photo': photo}
-            response = requests.post(url, data=data, files=files, timeout=10)
+            response = http.post(url, data=data, files=files, timeout=10)
             response.raise_for_status()
             return response.json()
     except requests.RequestException as e:
@@ -338,7 +343,7 @@ def send_photo_bytes(chat_id, photo_bytes, caption=None, parse_mode=None, reply_
         data['reply_markup'] = json.dumps(reply_markup)
     try:
         files = {'photo': ('qr.png', photo_bytes, 'image/png')}
-        response = requests.post(url, data=data, files=files, timeout=15)
+        response = http.post(url, data=data, files=files, timeout=15)
         response.raise_for_status()
         return response.json()
     except requests.RequestException as e:
@@ -359,7 +364,7 @@ def send_photo_url(chat_id, photo_url, caption=None, parse_mode=None, reply_mark
     if reply_markup:
         data['reply_markup'] = json.dumps(reply_markup)
     try:
-        response = requests.post(url, data=data, timeout=10)
+        response = http.post(url, data=data, timeout=10)
         response.raise_for_status()
         return response.json()
     except requests.RequestException as e:
@@ -372,7 +377,7 @@ def get_updates(offset=None):
     params = {'timeout': 30, 'limit': 100}
     if offset:
         params['offset'] = offset
-    response = requests.get(url, params=params, timeout=35)
+    response = http.get(url, params=params, timeout=35)
     response.raise_for_status()
     return response.json()
 
@@ -441,7 +446,7 @@ def handle_callback_query(update):
                         'chat_id': chat_id,
                         'message_id': original_message_id
                     }
-                    requests.post(delete_url, data=delete_data, timeout=5)
+                    http.post(delete_url, data=delete_data, timeout=5)
                     
                     logger.info(f"User {user_id} selected account type {account_type}, waiting for quantity input")
                 else:
@@ -454,17 +459,16 @@ def handle_callback_query(update):
 
         # Handle confirm buy — generate QR and proceed to payment
         elif callback_data == 'confirm_buy':
-            load_sessions()
             session = user_sessions.get(user_id)
             if not session or session.get('state') != 'waiting_for_confirmation':
-                requests.post(f"{API_URL}/answerCallbackQuery",
+                http.post(f"{API_URL}/answerCallbackQuery",
                               data={'callback_query_id': callback_query['id'],
                                     'text': 'មិនមានការទិញដែលកំពុងរង់ចាំ។', 'show_alert': True}, timeout=5)
                 return
             session['state'] = 'payment_pending'
             # Delete the summary message
             summary_message_id = callback_query['message']['message_id']
-            requests.post(f"{API_URL}/deleteMessage",
+            http.post(f"{API_URL}/deleteMessage",
                           data={'chat_id': chat_id, 'message_id': summary_message_id}, timeout=5)
             try:
                 img_bytes, md5_or_err, qr_string = generate_payment_qr(session['total_price'])
@@ -485,7 +489,7 @@ def handle_callback_query(update):
                             parse_mode="Markdown")
                     del user_sessions[user_id]
                     save_sessions()
-                    requests.post(f"{API_URL}/answerCallbackQuery",
+                    http.post(f"{API_URL}/answerCallbackQuery",
                                   data={'callback_query_id': callback_query['id']}, timeout=5)
                     return
                 md5_hash = md5_or_err
@@ -504,7 +508,7 @@ def handle_callback_query(update):
                 send_message(chat_id, "❌ *មានបញ្ហាក្នុងការបង្កើត QR Code*\n\nសូមព្យាយាមម្តងទៀត។", parse_mode="Markdown")
                 del user_sessions[user_id]
                 save_sessions()
-            requests.post(f"{API_URL}/answerCallbackQuery",
+            http.post(f"{API_URL}/answerCallbackQuery",
                           data={'callback_query_id': callback_query['id']}, timeout=5)
             return
 
@@ -514,20 +518,19 @@ def handle_callback_query(update):
                 del user_sessions[user_id]
             save_sessions()
             summary_message_id = callback_query['message']['message_id']
-            requests.post(f"{API_URL}/deleteMessage",
+            http.post(f"{API_URL}/deleteMessage",
                           data={'chat_id': chat_id, 'message_id': summary_message_id}, timeout=5)
             send_message(chat_id, "🚫 *បានបោះបង់ការទិញ*", parse_mode="Markdown")
             show_account_selection(chat_id)
-            requests.post(f"{API_URL}/answerCallbackQuery",
+            http.post(f"{API_URL}/answerCallbackQuery",
                           data={'callback_query_id': callback_query['id']}, timeout=5)
             return
 
         # Handle check payment button
         elif callback_data == 'check_payment':
-            load_sessions()
             session = user_sessions.get(user_id)
             if not session or session.get('state') != 'payment_pending':
-                requests.post(f"{API_URL}/answerCallbackQuery",
+                http.post(f"{API_URL}/answerCallbackQuery",
                               data={'callback_query_id': callback_query['id'],
                                     'text': 'មិនមានការទិញដែលកំពុងរង់ចាំ។', 'show_alert': True}, timeout=5)
                 return
@@ -535,19 +538,19 @@ def handle_callback_query(update):
             # Check payment status
             md5 = session.get('md5_hash')
             if not md5:
-                requests.post(f"{API_URL}/answerCallbackQuery",
+                http.post(f"{API_URL}/answerCallbackQuery",
                               data={'callback_query_id': callback_query['id'],
                                     'text': 'មានបញ្ហាក្នុងការស្វែងរក QR។ សូមចាប់ផ្តើមម្តងទៀត។', 'show_alert': True}, timeout=5)
                 return
             is_paid = check_payment_status(md5)
             if is_paid:
-                requests.post(f"{API_URL}/answerCallbackQuery",
+                http.post(f"{API_URL}/answerCallbackQuery",
                               data={'callback_query_id': callback_query['id'],
                                     'text': '✅ ការបង់ប្រាក់បានបញ្ជាក់!'}, timeout=5)
                 deliver_accounts(chat_id, user_id, session)
                 save_sessions()
             else:
-                requests.post(f"{API_URL}/answerCallbackQuery",
+                http.post(f"{API_URL}/answerCallbackQuery",
                               data={'callback_query_id': callback_query['id'],
                                     'text': '⏳ មិនទាន់បានទទួលការបង់ប្រាក់។ សូមព្យាយាមម្តងទៀត។',
                                     'show_alert': True}, timeout=5)
@@ -558,7 +561,7 @@ def handle_callback_query(update):
             session = user_sessions.get(user_id)
             qr_message_id = session.get('qr_message_id') if session else None
             if qr_message_id:
-                requests.post(f"{API_URL}/deleteMessage",
+                http.post(f"{API_URL}/deleteMessage",
                               data={'chat_id': chat_id, 'message_id': qr_message_id}, timeout=5)
             if user_id in user_sessions:
                 del user_sessions[user_id]
@@ -568,7 +571,7 @@ def handle_callback_query(update):
 
         # Answer callback query to remove loading state
         answer_url = f"{API_URL}/answerCallbackQuery"
-        requests.post(answer_url, data={'callback_query_id': callback_query['id']}, timeout=5)
+        http.post(answer_url, data={'callback_query_id': callback_query['id']}, timeout=5)
         
     except Exception as e:
         logger.error(f"Error handling callback query: {e}")
@@ -761,7 +764,7 @@ def deliver_accounts(chat_id, user_id, session):
     # Delete QR code message
     qr_message_id = session.get('qr_message_id')
     if qr_message_id:
-        requests.post(f"{API_URL}/deleteMessage",
+        http.post(f"{API_URL}/deleteMessage",
                       data={'chat_id': chat_id, 'message_id': qr_message_id}, timeout=5)
 
     if account_type not in accounts_data['account_types']:
@@ -805,7 +808,7 @@ def main():
 
     # Delete any active webhook so polling mode works without 409 conflicts
     try:
-        requests.post(f"{API_URL}/deleteWebhook", timeout=10)
+        http.post(f"{API_URL}/deleteWebhook", timeout=10)
         logger.info("Webhook deleted — polling mode active")
     except Exception as e:
         logger.warning(f"Could not delete webhook: {e}")
@@ -813,7 +816,7 @@ def main():
     # Test bot connection
     try:
         test_url = f"{API_URL}/getMe"
-        response = requests.get(test_url, timeout=10)
+        response = http.get(test_url, timeout=10)
         response.raise_for_status()
         bot_info = response.json()
         
@@ -843,11 +846,8 @@ def main():
             
             consecutive_409 = 0  # reset on success
             for update in updates.get('result', []):
-                handle_message(update)
                 offset = update['update_id'] + 1
-            
-            if not updates.get('result'):
-                time.sleep(1)
+                threading.Thread(target=handle_message, args=(update,), daemon=True).start()
                 
         except requests.exceptions.HTTPError as e:
             if e.response is not None and e.response.status_code == 409:
@@ -855,7 +855,7 @@ def main():
                 if consecutive_409 % 10 == 1:
                     logger.warning(f"409 Conflict (#{consecutive_409}) — webhook active on another server. Re-deleting webhook...")
                     try:
-                        requests.post(f"{API_URL}/deleteWebhook", timeout=10)
+                        http.post(f"{API_URL}/deleteWebhook", timeout=10)
                         logger.info("Webhook re-deleted, resuming polling")
                     except Exception as we:
                         logger.warning(f"Could not re-delete webhook: {we}")
