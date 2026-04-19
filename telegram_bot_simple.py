@@ -402,18 +402,9 @@ def send_message(chat_id, text, reply_to_message_id=None, parse_mode=None, reply
     if parse_mode:
         data['parse_mode'] = parse_mode
     
-    # Always show stock reply keyboard; if message has its own inline keyboard,
-    # send the reply keyboard in a silent preceding message first.
-    if reply_markup is None:
-        data['reply_markup'] = json.dumps(STOCK_REPLY_KEYBOARD)
-    else:
-        if 'inline_keyboard' in reply_markup:
-            requests.post(url, data={
-                'chat_id': chat_id,
-                'text': '\u3164',
-                'reply_markup': json.dumps(STOCK_REPLY_KEYBOARD)
-            }, timeout=10)
-        data['reply_markup'] = json.dumps(reply_markup)
+    # Always show stock reply keyboard for plain messages; inline keyboards keep their own markup.
+    effective_markup = reply_markup if reply_markup is not None else STOCK_REPLY_KEYBOARD
+    data['reply_markup'] = json.dumps(effective_markup)
     
     try:
         response = requests.post(url, data=data, timeout=10)
