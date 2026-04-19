@@ -38,6 +38,58 @@ API_URL = f"https://api.telegram.org/bot{BOT_TOKEN}"
 BAKONG_TOKEN = os.environ.get("BAKONG_TOKEN", "")
 khqr_client = KHQR(BAKONG_TOKEN)
 
+# ── Manual KHQR builder (fallback when library generates invalid strings) ──
+def _crc16_ccitt(data: str) -> str:
+    """CRC16-CCITT-FALSE: poly=0x1021, init=0xFFFF, no reflection."""
+    crc = 0xFFFF
+    for ch in data:
+        crc ^= ord(ch) << 8
+        for _ in range(8):
+            crc = ((crc << 1) ^ 0x1021) if (crc & 0x8000) else (crc << 1)
+            crc &= 0xFFFF
+    return f"{crc:04X}"
+
+def _tlv(tag: str, value: str) -> str:
+    return f"{tag}{len(value):02d}{value}"
+
+def _build_khqr_manual(bank_account, merchant_name, merchant_city,
+                        amount, bill_number, phone, store_label, terminal_label):
+    """Build a valid KHQR EMV string with correct CRC16, bypassing the library."""
+    # Phone: 85593330905 → 093330905
+    if phone.startswith('855'):
+        phone_local = '0' + phone[3:]
+    else:
+        phone_local = phone[-9:] if len(phone) > 9 else phone
+
+    # Additional data (tag 62)
+    add_data = (
+        _tlv("03", store_label) +
+        _tlv("02", phone_local) +
+        _tlv("01", bill_number) +
+        _tlv("07", terminal_label)
+    )
+
+    # Merchant info (tag 99): current time + expiry in milliseconds
+    now_ms  = str(int(time.time() * 1000))
+    exp_ms  = str(int((time.time() + 86400) * 1000))   # +1 day
+    info_data = _tlv("00", now_ms) + _tlv("01", exp_ms)
+
+    body = (
+        _tlv("00", "01") +
+        _tlv("01", "12") +
+        _tlv("29", _tlv("00", bank_account)) +
+        _tlv("52", "5999") +
+        _tlv("53", "840") +
+        _tlv("54", f"{amount:.2f}") +
+        _tlv("58", "KH") +
+        _tlv("59", merchant_name) +
+        _tlv("60", merchant_city) +
+        _tlv("62", add_data) +
+        _tlv("99", info_data) +
+        "6304"
+    )
+    return body + _crc16_ccitt(body)
+
 def generate_payment_qr(amount):
     """Generate QR code using bakong-khqr library. Returns (img_bytes, md5) or (None, error_msg) on failure."""
     # Check token is present
@@ -79,6 +131,20 @@ def generate_payment_qr(amount):
                 )
                 logger.info("create_qr without expiration succeeded (older library)")
             logger.info(f"KHQR string created, length={len(qr)}, start={qr[:40]}")
+            # Validate required EMV fields: currency (5303840) and amount (5404)
+            if '5303840' not in qr or '5404' not in qr:
+                logger.warning(f"Library KHQR missing currency/amount — using manual builder")
+                qr = _build_khqr_manual(
+                    bank_account='sovannrady@aclb',
+                    merchant_name='RADY',
+                    merchant_city='KPS',
+                    amount=amount,
+                    bill_number=bill_number,
+                    phone='85593330905',
+                    store_label='RADY',
+                    terminal_label='Cashier-01'
+                )
+                logger.info(f"Manual KHQR built, length={len(qr)}, start={qr[:40]}")
         except Exception as e:
             msg = f"create_qr failed: {type(e).__name__}: {e}"
             logger.error(msg)
