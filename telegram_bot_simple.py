@@ -450,16 +450,6 @@ def send_photo(chat_id, photo_path, caption=None, parse_mode=None, reply_markup=
 def send_photo_bytes(chat_id, photo_bytes, caption=None, parse_mode=None, reply_markup=None):
     """Send a photo from raw bytes to a specific chat (no filesystem needed)."""
     url = f"{API_URL}/sendPhoto"
-    # If photo has inline keyboard, push STOCK_REPLY_KEYBOARD first so it stays visible
-    if reply_markup and 'inline_keyboard' in reply_markup:
-        try:
-            requests.post(f"{API_URL}/sendMessage", data={
-                'chat_id': chat_id,
-                'text': '\u3164',
-                'reply_markup': json.dumps(STOCK_REPLY_KEYBOARD)
-            }, timeout=10)
-        except Exception:
-            pass
     data = {'chat_id': chat_id}
     if caption:
         data['caption'] = caption
