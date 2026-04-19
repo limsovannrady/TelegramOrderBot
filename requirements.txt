@@ -3,4 +3,3 @@ bakong-khqr[image]==0.5.7
 pillow
 python-telegram-bot
 qrcode
-pg8000

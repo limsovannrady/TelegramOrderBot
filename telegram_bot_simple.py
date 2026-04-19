@@ -9,8 +9,6 @@ import json
 import os
 import io
 import threading
-import pg8000.dbapi
-import ssl
 from urllib.parse import urlparse
 from urllib.parse import quote as url_quote
 from bakong_khqr import KHQR
@@ -222,62 +220,55 @@ def check_payment_status(md5):
     return False
 
 NEON_DATABASE_URL = os.environ.get("NEON_DATABASE_URL", "")
+_neon_host = urlparse(NEON_DATABASE_URL).hostname if NEON_DATABASE_URL else ""
+_neon_api_url = f"https://{_neon_host}/sql"
+_neon_headers = {
+    'Neon-Connection-String': NEON_DATABASE_URL,
+    'Content-Type': 'application/json',
+    'Accept': 'application/json'
+}
 
-def _get_db_conn():
-    """Get a Neon PostgreSQL connection using pg8000."""
-    parsed = urlparse(NEON_DATABASE_URL)
-    ssl_ctx = ssl.create_default_context()
-    ssl_ctx.check_hostname = False
-    ssl_ctx.verify_mode = ssl.CERT_NONE
-    return pg8000.dbapi.connect(
-        host=parsed.hostname,
-        port=parsed.port or 5432,
-        database=parsed.path.lstrip('/').split('?')[0],
-        user=parsed.username,
-        password=parsed.password,
-        ssl_context=ssl_ctx,
-        timeout=10
-    )
+def _neon_query(query, params=None):
+    """Execute a SQL query via Neon HTTP API."""
+    body = {'query': query}
+    if params:
+        body['params'] = params
+    resp = http.post(_neon_api_url, headers=_neon_headers, json=body, timeout=10)
+    resp.raise_for_status()
+    return resp.json()
 
 def _init_db():
     """Create tables if they don't exist."""
     try:
-        conn = _get_db_conn()
-        with conn.cursor() as cur:
-            cur.execute("""
-                CREATE TABLE IF NOT EXISTS bot_accounts (
-                    id SERIAL PRIMARY KEY,
-                    data JSONB NOT NULL DEFAULT '{}'
-                )
-            """)
-            cur.execute("""
-                CREATE TABLE IF NOT EXISTS bot_sessions (
-                    id SERIAL PRIMARY KEY,
-                    data JSONB NOT NULL DEFAULT '{}'
-                )
-            """)
-            cur.execute("SELECT COUNT(*) FROM bot_accounts")
-            if cur.fetchone()[0] == 0:
-                cur.execute("INSERT INTO bot_accounts (data) VALUES (%s)", [json.dumps({'accounts': [], 'account_types': {}, 'prices': {}})])
-            cur.execute("SELECT COUNT(*) FROM bot_sessions")
-            if cur.fetchone()[0] == 0:
-                cur.execute("INSERT INTO bot_sessions (data) VALUES (%s)", [json.dumps({})])
-        conn.commit()
-        conn.close()
-        logger.info("Neon DB initialized")
+        _neon_query("""
+            CREATE TABLE IF NOT EXISTS bot_accounts (
+                id SERIAL PRIMARY KEY,
+                data JSONB NOT NULL DEFAULT '{}'
+            )
+        """)
+        _neon_query("""
+            CREATE TABLE IF NOT EXISTS bot_sessions (
+                id SERIAL PRIMARY KEY,
+                data JSONB NOT NULL DEFAULT '{}'
+            )
+        """)
+        r = _neon_query("SELECT COUNT(*) as cnt FROM bot_accounts")
+        if int(r['rows'][0]['cnt']) == 0:
+            _neon_query("INSERT INTO bot_accounts (data) VALUES ($1)",
+                        [json.dumps({'accounts': [], 'account_types': {}, 'prices': {}})])
+        r = _neon_query("SELECT COUNT(*) as cnt FROM bot_sessions")
+        if int(r['rows'][0]['cnt']) == 0:
+            _neon_query("INSERT INTO bot_sessions (data) VALUES ($1)", [json.dumps({})])
+        logger.info("Neon DB initialized via HTTP API")
     except Exception as e:
         logger.error(f"DB init failed: {e}")
 
 def load_data():
-    """Load accounts data from Neon database."""
+    """Load accounts data from Neon via HTTP API."""
     try:
-        conn = _get_db_conn()
-        with conn.cursor() as cur:
-            cur.execute("SELECT data FROM bot_accounts LIMIT 1")
-            row = cur.fetchone()
-        conn.close()
-        if row:
-            data = row[0]
+        r = _neon_query("SELECT data FROM bot_accounts LIMIT 1")
+        if r['rows']:
+            data = r['rows'][0]['data']
             if isinstance(data, str):
                 data = json.loads(data)
             logger.info("Loaded accounts data from Neon DB")
@@ -287,28 +278,21 @@ def load_data():
     return {'accounts': [], 'account_types': {}, 'prices': {}}
 
 def save_data():
-    """Save accounts data to Neon database."""
+    """Save accounts data to Neon via HTTP API."""
     try:
-        conn = _get_db_conn()
-        with conn.cursor() as cur:
-            cur.execute("UPDATE bot_accounts SET data = %s", [json.dumps(accounts_data, ensure_ascii=False)])
-        conn.commit()
-        conn.close()
+        _neon_query("UPDATE bot_accounts SET data = $1",
+                    [json.dumps(accounts_data, ensure_ascii=False)])
         logger.info("Saved accounts data to Neon DB")
     except Exception as e:
         logger.error(f"Failed to save data to DB: {e}")
 
 def load_sessions():
-    """Load user sessions from Neon database."""
+    """Load user sessions from Neon via HTTP API."""
     global user_sessions
     try:
-        conn = _get_db_conn()
-        with conn.cursor() as cur:
-            cur.execute("SELECT data FROM bot_sessions LIMIT 1")
-            row = cur.fetchone()
-        conn.close()
-        if row:
-            data = row[0]
+        r = _neon_query("SELECT data FROM bot_sessions LIMIT 1")
+        if r['rows']:
+            data = r['rows'][0]['data']
             if isinstance(data, str):
                 data = json.loads(data)
             user_sessions = {int(k): v for k, v in data.items()}
@@ -317,13 +301,10 @@ def load_sessions():
         logger.error(f"Failed to load sessions from DB: {e}")
 
 def save_sessions():
-    """Save user sessions to Neon database."""
+    """Save user sessions to Neon via HTTP API."""
     try:
-        conn = _get_db_conn()
-        with conn.cursor() as cur:
-            cur.execute("UPDATE bot_sessions SET data = %s", [json.dumps({str(k): v for k, v in user_sessions.items()}, ensure_ascii=False)])
-        conn.commit()
-        conn.close()
+        _neon_query("UPDATE bot_sessions SET data = $1",
+                    [json.dumps({str(k): v for k, v in user_sessions.items()}, ensure_ascii=False)])
     except Exception as e:
         logger.error(f"Failed to save sessions to DB: {e}")
 
