@@ -659,10 +659,6 @@ def handle_message(update):
 
             # Handle stale payment_pending session — user sent a new message without paying
             if session.get('state') == 'payment_pending':
-                qr_message_id = session.get('qr_message_id')
-                if qr_message_id:
-                    http.post(f"{API_URL}/deleteMessage",
-                              data={'chat_id': chat_id, 'message_id': qr_message_id}, timeout=5)
                 del user_sessions[user_id]
                 save_sessions()
                 send_message(chat_id,
