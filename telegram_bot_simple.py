@@ -774,7 +774,7 @@ def handle_message(update):
                 send_photo(chat_id, 'start_banner.jpg', caption=welcome_caption, parse_mode='HTML', message_effect_id='5046509860389126442')
             except Exception as e:
                 logger.error(f"Failed to send banner image: {e}")
-            send_message(chat_id, "👇 ចុចប៊ូតុងខាងក្រោម ដើម្បីឆែកស្តុក", reply_markup=STOCK_REPLY_KEYBOARD)
+            send_message(chat_id, ".", reply_markup=STOCK_REPLY_KEYBOARD)
             show_account_selection_local()
             return
         
