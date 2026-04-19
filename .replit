@@ -26,3 +26,7 @@ args = "python telegram_bot_simple.py"
 
 [agent]
 expertMode = true
+
+[deployment]
+deploymentTarget = "vm"
+run = ["python", "telegram_bot_simple.py"]
