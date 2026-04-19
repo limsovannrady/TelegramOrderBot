@@ -59,8 +59,7 @@ def generate_payment_qr(amount):
                 phone_number='85593330905',
                 bill_number=bill_number,
                 terminal_label='Cashier-01',
-                static=False,
-                expiration=1
+                static=False
             )
             logger.info(f"KHQR string created, length={len(qr)}")
         except Exception as e:
