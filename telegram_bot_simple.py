@@ -12,8 +12,6 @@ import threading
 from urllib.parse import quote as url_quote
 from bakong_khqr import KHQR
 
-DATA_DIR = '.'
-
 # Configure logging
 logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
@@ -220,49 +218,103 @@ def check_payment_status(md5):
         logger.error(f"Failed to check payment status: {type(e).__name__}: {e}")
     return False
 
-# File paths - use /tmp on Vercel (read-only filesystem)
-DATA_FILE = os.path.join(DATA_DIR, 'accounts_data.json')
-SESSIONS_FILE = os.path.join(DATA_DIR, 'sessions.json')
+STORAGE_CHAT_ID = ADMIN_ID
+STORAGE_PREFIX = 'BOTSTORE:'
+_storage_message_id = None
+
+def _get_pinned_message():
+    """Fetch the pinned message from admin chat."""
+    try:
+        response = http.post(f"{API_URL}/getChat", data={'chat_id': STORAGE_CHAT_ID}, timeout=10)
+        chat = response.json().get('result', {})
+        return chat.get('pinned_message')
+    except Exception as e:
+        logger.error(f"Failed to get pinned message: {e}")
+        return None
+
+def _parse_storage(text):
+    """Parse storage text into a dict."""
+    try:
+        if text and text.startswith(STORAGE_PREFIX):
+            return json.loads(text[len(STORAGE_PREFIX):])
+    except Exception as e:
+        logger.error(f"Failed to parse storage: {e}")
+    return {'accounts': [], 'account_types': {}, 'prices': {}, '_sessions': {}}
+
+def _get_current_storage():
+    """Load current storage dict from pinned message."""
+    global _storage_message_id
+    pinned = _get_pinned_message()
+    if pinned:
+        _storage_message_id = pinned.get('message_id')
+        return _parse_storage(pinned.get('text', ''))
+    return {'accounts': [], 'account_types': {}, 'prices': {}, '_sessions': {}}
+
+def _save_storage(data):
+    """Write storage dict to pinned message in admin chat."""
+    global _storage_message_id
+    text = STORAGE_PREFIX + json.dumps(data, ensure_ascii=False)
+    if _storage_message_id:
+        try:
+            response = http.post(f"{API_URL}/editMessageText", data={
+                'chat_id': STORAGE_CHAT_ID,
+                'message_id': _storage_message_id,
+                'text': text
+            }, timeout=10)
+            if response.json().get('ok'):
+                logger.info("Storage updated in Telegram pinned message")
+                return
+        except Exception:
+            pass
+    try:
+        response = http.post(f"{API_URL}/sendMessage", data={
+            'chat_id': STORAGE_CHAT_ID,
+            'text': text
+        }, timeout=10)
+        result = response.json()
+        if result.get('ok'):
+            msg_id = result['result']['message_id']
+            _storage_message_id = msg_id
+            http.post(f"{API_URL}/pinChatMessage", data={
+                'chat_id': STORAGE_CHAT_ID,
+                'message_id': msg_id,
+                'disable_notification': True
+            }, timeout=10)
+            logger.info("Storage created and pinned in Telegram admin chat")
+    except Exception as e:
+        logger.error(f"Failed to save storage: {e}")
 
 def load_data():
-    """Load accounts data from local file."""
-    if os.path.exists(DATA_FILE):
-        try:
-            with open(DATA_FILE, 'r', encoding='utf-8') as f:
-                data = json.load(f)
-                logger.info(f"Loaded accounts data from {DATA_FILE}")
-                return data
-        except Exception as e:
-            logger.error(f"Failed to load data: {e}")
-    return {'accounts': [], 'account_types': {}, 'prices': {}}
+    """Load accounts data from Telegram pinned message."""
+    storage = _get_current_storage()
+    logger.info("Loaded accounts data from Telegram storage")
+    return {
+        'accounts': storage.get('accounts', []),
+        'account_types': storage.get('account_types', {}),
+        'prices': storage.get('prices', {})
+    }
 
 def save_data():
-    """Save accounts data to local file."""
-    try:
-        with open(DATA_FILE, 'w', encoding='utf-8') as f:
-            json.dump(accounts_data, f, ensure_ascii=False, indent=2)
-        logger.info(f"Saved accounts data to {DATA_FILE}")
-    except Exception as e:
-        logger.error(f"Failed to save data to file: {e}")
+    """Save accounts data to Telegram pinned message."""
+    storage = _get_current_storage()
+    storage['accounts'] = accounts_data.get('accounts', [])
+    storage['account_types'] = accounts_data.get('account_types', {})
+    storage['prices'] = accounts_data.get('prices', {})
+    _save_storage(storage)
 
 def load_sessions():
-    """Load user sessions from file (needed for Vercel stateless env)."""
+    """Load user sessions from Telegram pinned message."""
     global user_sessions
-    if os.path.exists(SESSIONS_FILE):
-        try:
-            with open(SESSIONS_FILE, 'r', encoding='utf-8') as f:
-                data = json.load(f)
-                user_sessions = {int(k): v for k, v in data.items()}
-        except Exception as e:
-            logger.error(f"Failed to load sessions: {e}")
+    storage = _get_current_storage()
+    sessions_raw = storage.get('_sessions', {})
+    user_sessions = {int(k): v for k, v in sessions_raw.items()}
+    logger.info("Loaded sessions from Telegram storage")
 
 def save_sessions():
-    """Save user sessions to file."""
-    try:
-        with open(SESSIONS_FILE, 'w', encoding='utf-8') as f:
-            json.dump({str(k): v for k, v in user_sessions.items()}, f, ensure_ascii=False)
-    except Exception as e:
-        logger.error(f"Failed to save sessions: {e}")
+    """Save user sessions to Telegram pinned message."""
+    storage = _get_current_storage()
+    storage['_sessions'] = {str(k): v for k, v in user_sessions.items()}
+    _save_storage(storage)
 
 # User session storage for tracking conversation state
 user_sessions = {}
