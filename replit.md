@@ -38,6 +38,7 @@ The architecture avoids complex library dependencies and ensures reliable operat
 
 ### Purchase Flow (Non-Admin Users)
 1. **Account Selection**: Click inline buttons to select account type (e.g., "ទិញ Facebook - មានក្នុងស្តុក 5")
+   - Inline buttons use short hashed callback IDs so long account type names do not exceed Telegram callback limits.
 2. **Quantity Input**: Enter desired quantity after seeing stock and price information
 3. **Purchase Confirmation**: Review order details with inline buttons:
    - 🚫 បោះបង់ (Cancel Purchase)
@@ -59,6 +60,7 @@ The architecture avoids complex library dependencies and ensures reliable operat
 ### Session Management
 - **user_sessions**: Tracks conversation state for multi-step workflows
 - **accounts_data**: Stores account information, types, and pricing
+- `/start` clears stale user purchase sessions before showing the account selection menu.
 
 ### Logging System
 - **Dual Output**: Logs to both console (stdout) and file (`bot.log`)

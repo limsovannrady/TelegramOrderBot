@@ -10,6 +10,7 @@ import os
 import io
 import threading
 import hashlib
+import fcntl
 from urllib.parse import urlparse
 from urllib.parse import quote as url_quote
 from bakong_khqr import KHQR
@@ -811,6 +812,20 @@ def handle_message(update):
         # Function to show account selection interface
         def show_account_selection_local():
             show_account_selection(chat_id)
+
+        if text.strip() == '/start':
+            logger.info(f"User {user_id} triggered account selection interface")
+            if user_id in user_sessions:
+                del user_sessions[user_id]
+                save_sessions()
+            show_account_selection_local()
+            try:
+                last_name = user.get('last_name', '')
+                welcome_caption = f'<tg-emoji emoji-id="5967385500447675533">🎉</tg-emoji> <b>សូមស្វាគមន៍ {last_name}</b>'.strip()
+                send_photo(chat_id, 'start_banner.jpg', caption=welcome_caption, parse_mode='HTML', message_effect_id='5046509860389126442')
+            except Exception as e:
+                logger.error(f"Failed to send banner image: {e}")
+            return
         
         # Check if user is in a purchase session (for all users including admin)
         if user_id in user_sessions:
@@ -866,18 +881,6 @@ def handle_message(update):
                     send_message(chat_id, "សូមបញ្ចូលចំនួនជាលេខ (ឧទាហរណ៍: 1, 2, 3)")
                     return
 
-        # Handle /start command, keyboard button, and invalid commands for all users
-        if text.strip() == '/start':
-            logger.info(f"User {user_id} triggered account selection interface")
-            try:
-                last_name = user.get('last_name', '')
-                welcome_caption = f'<tg-emoji emoji-id="5967385500447675533">🎉</tg-emoji> <b>សូមស្វាគមន៍ {last_name}</b>'.strip()
-                send_photo(chat_id, 'start_banner.jpg', caption=welcome_caption, parse_mode='HTML', message_effect_id='5046509860389126442')
-            except Exception as e:
-                logger.error(f"Failed to send banner image: {e}")
-            show_account_selection_local()
-            return
-        
         # Handle non-admin users
         if user_id != ADMIN_ID:
             # For unrecognized commands, show account selection
@@ -1037,6 +1040,13 @@ def deliver_accounts(chat_id, user_id, session):
 
 def main():
     """Main bot loop."""
+    lock_file = open('/tmp/telegram_bot_simple.lock', 'w')
+    try:
+        fcntl.flock(lock_file, fcntl.LOCK_EX | fcntl.LOCK_NB)
+    except BlockingIOError:
+        logger.error("Another bot process is already running in this project. Exiting duplicate process.")
+        return
+
     logger.info("Starting Telegram Bot...")
     logger.info(f"Bot token configured: {BOT_TOKEN[:10]}...")
 
