@@ -25,6 +25,7 @@ The architecture avoids complex library dependencies and ensures reliable operat
 - **handle_message()**: Main message processor with state management
 - **send_message()**: Direct API message sending
 - **get_updates()**: Polling for new messages
+- **send_start_banner()**: Sends the welcome banner and reuses Telegram's cached file ID after the first upload for faster `/start` responses.
 
 ### User Commands
 - **/start**: Available to all users, sends Khmer account selection message with inline keyboard
@@ -35,6 +36,7 @@ The architecture avoids complex library dependencies and ensures reliable operat
 - **Out-of-Stock Indicators**: Displays "សូមអភ័យទោស អស់ពីស្តុក 🪤" for empty account types
 - **Visual Distinction**: Clear differentiation between purchasable and out-of-stock items
 - **Automatic Stock Updates**: Real-time stock count updates as accounts are sold
+- **Fast Callback Handling**: Inline button clicks are acknowledged immediately to reduce Telegram loading delays during buying and payment steps.
 
 ### Purchase Flow (Non-Admin Users)
 1. **Account Selection**: Click inline buttons to select account type (e.g., "ទិញ Facebook - មានក្នុងស្តុក 5")

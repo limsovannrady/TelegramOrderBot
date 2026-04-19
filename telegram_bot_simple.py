@@ -387,6 +387,7 @@ load_sessions()
 
 # Tracks the current user message_id so all send_message calls auto-reply-quote it
 _reply_to_id = None
+START_BANNER_FILE_ID = os.environ.get("START_BANNER_FILE_ID", "")
 
 def _type_callback_id(account_type):
     return hashlib.sha1(account_type.encode('utf-8')).hexdigest()[:12]
@@ -460,6 +461,54 @@ def send_photo(chat_id, photo_path, caption=None, parse_mode=None, reply_markup=
             return response.json()
     except requests.RequestException as e:
         logger.error(f"Failed to send photo: {e}")
+        return None
+
+def send_start_banner(chat_id, caption=None, parse_mode=None, message_effect_id=None):
+    global START_BANNER_FILE_ID
+    url = f"{API_URL}/sendPhoto"
+    data = {'chat_id': chat_id}
+    if caption:
+        data['caption'] = caption
+    if parse_mode:
+        data['parse_mode'] = parse_mode
+    if message_effect_id:
+        data['message_effect_id'] = message_effect_id
+
+    if START_BANNER_FILE_ID:
+        try:
+            data['photo'] = START_BANNER_FILE_ID
+            response = http.post(url, data=data, timeout=6)
+            response.raise_for_status()
+            return response.json()
+        except requests.RequestException as e:
+            logger.warning(f"Cached start banner failed, uploading again: {e}")
+            START_BANNER_FILE_ID = ""
+            data.pop('photo', None)
+
+    try:
+        with open('start_banner.jpg', 'rb') as photo:
+            files = {'photo': photo}
+            response = http.post(url, data=data, files=files, timeout=10)
+            response.raise_for_status()
+            result = response.json()
+            photos = result.get('result', {}).get('photo', [])
+            if photos:
+                START_BANNER_FILE_ID = photos[-1].get('file_id', "")
+            return result
+    except requests.RequestException as e:
+        logger.error(f"Failed to send start banner: {e}")
+        return None
+
+def answer_callback(callback_query_id, text=None, show_alert=False):
+    data = {'callback_query_id': callback_query_id}
+    if text:
+        data['text'] = text
+    if show_alert:
+        data['show_alert'] = True
+    try:
+        return http.post(f"{API_URL}/answerCallbackQuery", data=data, timeout=4)
+    except requests.RequestException as e:
+        logger.warning(f"Failed to answer callback quickly: {e}")
         return None
 
 def send_photo_bytes(chat_id, photo_bytes, caption=None, parse_mode=None, reply_markup=None):
@@ -550,11 +599,9 @@ def handle_callback_query(update):
             else:
                 account_type = callback_data.replace('buy_', '')
             if not account_type:
-                http.post(f"{API_URL}/answerCallbackQuery",
-                          data={'callback_query_id': callback_query['id'],
-                                'text': 'ប្រភេទនេះមិនមានទៀតហើយ។ សូមចាប់ផ្តើមម្តងទៀត។',
-                                'show_alert': True}, timeout=5)
+                answer_callback(callback_query['id'], 'ប្រភេទនេះមិនមានទៀតហើយ។ សូមចាប់ផ្តើមម្តងទៀត។', True)
                 return
+            answer_callback(callback_query['id'])
             
             # Check if account type exists and has stock
             if account_type in accounts_data['account_types']:
@@ -594,6 +641,7 @@ def handle_callback_query(update):
         
         # Handle out-of-stock button clicks
         elif callback_data.startswith('out_of_stock:') or callback_data.startswith('out_of_stock_'):
+            answer_callback(callback_query['id'])
             if callback_data.startswith('out_of_stock:'):
                 account_type = _account_type_from_callback_id(callback_data[13:]) or "នេះ"
             else:
@@ -604,10 +652,9 @@ def handle_callback_query(update):
         elif callback_data == 'confirm_buy':
             session = user_sessions.get(user_id)
             if not session or session.get('state') != 'waiting_for_confirmation':
-                http.post(f"{API_URL}/answerCallbackQuery",
-                              data={'callback_query_id': callback_query['id'],
-                                    'text': 'មិនមានការទិញដែលកំពុងរង់ចាំ។', 'show_alert': True}, timeout=5)
+                answer_callback(callback_query['id'], 'មិនមានការទិញដែលកំពុងរង់ចាំ។', True)
                 return
+            answer_callback(callback_query['id'], 'កំពុងបង្កើត QR...')
             session['state'] = 'payment_pending'
             # Delete the summary message
             summary_message_id = callback_query['message']['message_id']
@@ -632,8 +679,6 @@ def handle_callback_query(update):
                             parse_mode="Markdown")
                     del user_sessions[user_id]
                     save_sessions()
-                    http.post(f"{API_URL}/answerCallbackQuery",
-                                  data={'callback_query_id': callback_query['id']}, timeout=5)
                     return
                 md5_hash = md5_or_err
                 session['md5_hash'] = md5_hash
@@ -652,18 +697,15 @@ def handle_callback_query(update):
                 send_message(chat_id, "❌ *មានបញ្ហាក្នុងការបង្កើត QR Code*\n\nសូមព្យាយាមម្តងទៀត។", parse_mode="Markdown")
                 del user_sessions[user_id]
                 save_sessions()
-            http.post(f"{API_URL}/answerCallbackQuery",
-                          data={'callback_query_id': callback_query['id']}, timeout=5)
             return
 
         # Admin: delete type — step 1: show confirmation
         elif callback_data.startswith('dts:') and user_id == ADMIN_ID:
             type_name = _account_type_from_callback_id(callback_data[4:]) or callback_data[4:]
             if type_name not in accounts_data.get('account_types', {}):
-                http.post(f"{API_URL}/answerCallbackQuery",
-                              data={'callback_query_id': callback_query['id'],
-                                    'text': 'ប្រភេទនេះមិនមានទៀតហើយ!', 'show_alert': True}, timeout=5)
+                answer_callback(callback_query['id'], 'ប្រភេទនេះមិនមានទៀតហើយ!', True)
                 return
+            answer_callback(callback_query['id'])
             count = len(accounts_data['account_types'].get(type_name, []))
             price = accounts_data.get('prices', {}).get(type_name, 0)
             confirm_cb = f"dtc:{_type_callback_id(type_name)}"
@@ -676,18 +718,15 @@ def handle_callback_query(update):
                 f"<blockquote>🔹 ប្រភេទ: {type_name}\n🔹 ចំនួន Account: {count}\n🔹 តម្លៃ: ${price}</blockquote>\n\n"
                 f"Account ទាំងអស់ក្នុងប្រភេទនេះនឹងត្រូវបានលុបចោលជាអចិន្ត្រៃយ៍!",
                 parse_mode="HTML", reply_to_message_id=None, reply_markup=keyboard)
-            http.post(f"{API_URL}/answerCallbackQuery",
-                          data={'callback_query_id': callback_query['id']}, timeout=5)
             return
 
         # Admin: delete type — step 2: confirmed, perform deletion
         elif callback_data.startswith('dtc:') and user_id == ADMIN_ID:
             type_name = _account_type_from_callback_id(callback_data[4:]) or callback_data[4:]
             if type_name not in accounts_data.get('account_types', {}):
-                http.post(f"{API_URL}/answerCallbackQuery",
-                              data={'callback_query_id': callback_query['id'],
-                                    'text': 'ប្រភេទនេះមិនមានទៀតហើយ!', 'show_alert': True}, timeout=5)
+                answer_callback(callback_query['id'], 'ប្រភេទនេះមិនមានទៀតហើយ!', True)
                 return
+            answer_callback(callback_query['id'])
             count = len(accounts_data['account_types'].pop(type_name, []))
             accounts_data.get('prices', {}).pop(type_name, None)
             accounts_data['accounts'] = [
@@ -701,24 +740,22 @@ def handle_callback_query(update):
             send_message(chat_id,
                 f"✅ <b>បានលុបប្រភេទ Account <code>{type_name}</code> ចំនួន {count} records ដោយជោគជ័យ!</b>",
                 parse_mode="HTML", reply_to_message_id=None)
-            http.post(f"{API_URL}/answerCallbackQuery",
-                          data={'callback_query_id': callback_query['id']}, timeout=5)
             logger.info(f"Admin {user_id} deleted account type '{type_name}' ({count} records)")
             return
 
         # Admin: delete type — cancelled
         elif callback_data == 'dtcancel' and user_id == ADMIN_ID:
+            answer_callback(callback_query['id'])
             http.post(f"{API_URL}/deleteMessage",
                           data={'chat_id': chat_id,
                                 'message_id': callback_query['message']['message_id']}, timeout=5)
             send_message(chat_id, "🚫 <b>បានបោះបង់ការលុបប្រភេទ Account</b>",
                          parse_mode="HTML", reply_to_message_id=None)
-            http.post(f"{API_URL}/answerCallbackQuery",
-                          data={'callback_query_id': callback_query['id']}, timeout=5)
             return
 
         # Handle cancel buy — cancel from summary screen (before QR)
         elif callback_data == 'cancel_buy':
+            answer_callback(callback_query['id'])
             if user_id in user_sessions:
                 del user_sessions[user_id]
             save_sessions()
@@ -727,8 +764,6 @@ def handle_callback_query(update):
                           data={'chat_id': chat_id, 'message_id': summary_message_id}, timeout=5)
             send_message(chat_id, "🚫 *បានបោះបង់ការទិញ*", parse_mode="Markdown")
             show_account_selection(chat_id)
-            http.post(f"{API_URL}/answerCallbackQuery",
-                          data={'callback_query_id': callback_query['id']}, timeout=5)
             return
 
         # Handle check payment button
@@ -737,35 +772,27 @@ def handle_callback_query(update):
             if not session or session.get('state') != 'payment_pending':
                 session = get_pending_payment(user_id)
             if not session:
-                http.post(f"{API_URL}/answerCallbackQuery",
-                              data={'callback_query_id': callback_query['id'],
-                                    'text': 'មិនមានការទិញដែលកំពុងរង់ចាំ។', 'show_alert': True}, timeout=5)
+                answer_callback(callback_query['id'], 'មិនមានការទិញដែលកំពុងរង់ចាំ។', True)
                 return
 
             # Check payment status
             md5 = session.get('md5_hash')
             if not md5:
-                http.post(f"{API_URL}/answerCallbackQuery",
-                              data={'callback_query_id': callback_query['id'],
-                                    'text': 'មានបញ្ហាក្នុងការស្វែងរក QR។ សូមចាប់ផ្តើមម្តងទៀត។', 'show_alert': True}, timeout=5)
+                answer_callback(callback_query['id'], 'មានបញ្ហាក្នុងការស្វែងរក QR។ សូមចាប់ផ្តើមម្តងទៀត។', True)
                 return
             is_paid = check_payment_status(md5)
             if is_paid:
-                http.post(f"{API_URL}/answerCallbackQuery",
-                              data={'callback_query_id': callback_query['id'],
-                                    'text': '✅ ការបង់ប្រាក់បានបញ្ជាក់!'}, timeout=5)
+                answer_callback(callback_query['id'], '✅ ការបង់ប្រាក់បានបញ្ជាក់!')
                 deliver_accounts(chat_id, user_id, session)
                 delete_pending_payment(user_id)
                 save_sessions()
             else:
-                http.post(f"{API_URL}/answerCallbackQuery",
-                              data={'callback_query_id': callback_query['id'],
-                                    'text': '⏳ មិនទាន់បានទទួលការបង់ប្រាក់។ សូមព្យាយាមម្តងទៀត។',
-                                    'show_alert': True}, timeout=5)
+                answer_callback(callback_query['id'], '⏳ មិនទាន់បានទទួលការបង់ប្រាក់។ សូមព្យាយាមម្តងទៀត។', True)
             return
 
         # Handle cancel purchase
         elif callback_data == 'cancel_purchase':
+            answer_callback(callback_query['id'])
             session = user_sessions.get(user_id)
             qr_message_id = session.get('qr_message_id') if session else None
             if qr_message_id:
@@ -778,10 +805,6 @@ def handle_callback_query(update):
             send_message(chat_id, "🚫 *បានបោះបង់ការទិញ*", parse_mode="Markdown")
             show_account_selection(chat_id)
 
-        # Answer callback query to remove loading state
-        answer_url = f"{API_URL}/answerCallbackQuery"
-        http.post(answer_url, data={'callback_query_id': callback_query['id']}, timeout=5)
-        
     except Exception as e:
         logger.error(f"Error handling callback query: {e}")
 
@@ -820,7 +843,7 @@ def handle_message(update):
                 save_sessions()
             try:
                 welcome_caption = '<tg-emoji emoji-id="5967385500447675533">🎉</tg-emoji> <b>សូមស្វាគមន៍ Sovannrady</b>'
-                send_photo(chat_id, 'start_banner.jpg', caption=welcome_caption, parse_mode='HTML', message_effect_id='5046509860389126442')
+                send_start_banner(chat_id, caption=welcome_caption, parse_mode='HTML', message_effect_id='5046509860389126442')
             except Exception as e:
                 logger.error(f"Failed to send banner image: {e}")
             show_account_selection_local()
