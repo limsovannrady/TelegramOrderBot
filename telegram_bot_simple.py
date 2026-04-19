@@ -9,6 +9,7 @@ import json
 import os
 import io
 import threading
+import hashlib
 from urllib.parse import urlparse
 from urllib.parse import quote as url_quote
 from bakong_khqr import KHQR
@@ -386,6 +387,19 @@ load_sessions()
 # Tracks the current user message_id so all send_message calls auto-reply-quote it
 _reply_to_id = None
 
+def _type_callback_id(account_type):
+    return hashlib.sha1(account_type.encode('utf-8')).hexdigest()[:12]
+
+def _account_type_from_callback_id(callback_id):
+    for account_type in accounts_data.get('account_types', {}):
+        if _type_callback_id(account_type) == callback_id:
+            return account_type
+    return None
+
+def _short_label(text, limit=36):
+    clean = " ".join(str(text).split())
+    return clean if len(clean) <= limit else clean[:limit - 1] + "…"
+
 def send_message(chat_id, text, reply_to_message_id=None, parse_mode=None, reply_markup=None, message_effect_id=None):
     """Send a message to a specific chat."""
     url = f"{API_URL}/sendMessage"
@@ -503,8 +517,8 @@ def show_account_selection(chat_id):
     for account_type, accounts in accounts_data['account_types'].items():
         count = len(accounts)
         if count > 0:
-            button_text = f"ទិញ {account_type} - មានក្នុងស្តុក {count}"
-            inline_buttons.append([{'text': button_text, 'callback_data': f"buy_{account_type}"}])
+            button_text = f"ទិញ {_short_label(account_type)} - ស្តុក {count}"
+            inline_buttons.append([{'text': button_text, 'callback_data': f"buy:{_type_callback_id(account_type)}"}])
     if not inline_buttons:
         send_message(chat_id, "_សូមអភ័យទោស អស់ពីស្តុក 🪤_", parse_mode="Markdown", reply_to_message_id=False)
         return
@@ -529,8 +543,17 @@ def handle_callback_query(update):
         logger.info(f"Received callback from user {user.get('first_name', 'Unknown')} (ID: {user_id}): {callback_data}")
         
         # Handle buy button clicks with reply quote functionality
-        if callback_data.startswith('buy_'):
-            account_type = callback_data.replace('buy_', '')
+        if callback_data.startswith('buy:') or callback_data.startswith('buy_'):
+            if callback_data.startswith('buy:'):
+                account_type = _account_type_from_callback_id(callback_data[4:])
+            else:
+                account_type = callback_data.replace('buy_', '')
+            if not account_type:
+                http.post(f"{API_URL}/answerCallbackQuery",
+                          data={'callback_query_id': callback_query['id'],
+                                'text': 'ប្រភេទនេះមិនមានទៀតហើយ។ សូមចាប់ផ្តើមម្តងទៀត។',
+                                'show_alert': True}, timeout=5)
+                return
             
             # Check if account type exists and has stock
             if account_type in accounts_data['account_types']:
@@ -569,8 +592,11 @@ def handle_callback_query(update):
                     send_message(chat_id, f"សុំទោស! Account {account_type} អស់ស្តុកហើយ។")
         
         # Handle out-of-stock button clicks
-        elif callback_data.startswith('out_of_stock_'):
-            account_type = callback_data.replace('out_of_stock_', '')
+        elif callback_data.startswith('out_of_stock:') or callback_data.startswith('out_of_stock_'):
+            if callback_data.startswith('out_of_stock:'):
+                account_type = _account_type_from_callback_id(callback_data[13:]) or "នេះ"
+            else:
+                account_type = callback_data.replace('out_of_stock_', '')
             send_message(chat_id, f"សូមអភ័យទោស Account {account_type} អស់ពីស្តុក 🪤")
 
         # Handle confirm buy — generate QR and proceed to payment
@@ -631,7 +657,7 @@ def handle_callback_query(update):
 
         # Admin: delete type — step 1: show confirmation
         elif callback_data.startswith('dts:') and user_id == ADMIN_ID:
-            type_name = callback_data[4:]
+            type_name = _account_type_from_callback_id(callback_data[4:]) or callback_data[4:]
             if type_name not in accounts_data.get('account_types', {}):
                 http.post(f"{API_URL}/answerCallbackQuery",
                               data={'callback_query_id': callback_query['id'],
@@ -639,7 +665,7 @@ def handle_callback_query(update):
                 return
             count = len(accounts_data['account_types'].get(type_name, []))
             price = accounts_data.get('prices', {}).get(type_name, 0)
-            confirm_cb = f"dtc:{type_name}"[:64]
+            confirm_cb = f"dtc:{_type_callback_id(type_name)}"
             keyboard = {'inline_keyboard': [[
                 {'text': '✅ បញ្ជាក់លុប', 'callback_data': confirm_cb},
                 {'text': '❌ បោះបង់', 'callback_data': 'dtcancel'}
@@ -655,7 +681,7 @@ def handle_callback_query(update):
 
         # Admin: delete type — step 2: confirmed, perform deletion
         elif callback_data.startswith('dtc:') and user_id == ADMIN_ID:
-            type_name = callback_data[4:]
+            type_name = _account_type_from_callback_id(callback_data[4:]) or callback_data[4:]
             if type_name not in accounts_data.get('account_types', {}):
                 http.post(f"{API_URL}/answerCallbackQuery",
                               data={'callback_query_id': callback_query['id'],
@@ -872,8 +898,8 @@ def handle_message(update):
                 for t in types:
                     count = len(accounts_data['account_types'].get(t, []))
                     price = accounts_data.get('prices', {}).get(t, 0)
-                    label = f"{t} ({count} pcs · ${price})"
-                    cb = f"dts:{t}"[:64]
+                    label = f"{_short_label(t)} ({count} pcs · ${price})"
+                    cb = f"dts:{_type_callback_id(t)}"
                     rows.append([{'text': label, 'callback_data': cb}])
                 keyboard = {'inline_keyboard': rows}
                 send_message(chat_id, "🗑 <b>ជ្រើសរើសប្រភេទ Account ដែលចង់លុប៖</b>",
