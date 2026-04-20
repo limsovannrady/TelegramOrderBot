@@ -1004,7 +1004,7 @@ def handle_message(update):
             full_name = f"{user.get('first_name', '')} {user.get('last_name', '')}".strip() or 'N/A'
             account_info = (
                 f"👤 <b>ឈ្មោះ:</b> {full_name}\n"
-                f"🔷 <b>ID:</b> <code>{user_id}</code>"
+                f'<tg-emoji emoji-id="5422683699130933153">🪪</tg-emoji> <b>ID:</b> <code>{user_id}</code>'
             )
             inline_kb = {'inline_keyboard': [[{'text': 'ព័ត៌មានបន្ថែម', 'url': 'https://t.me/limsovannrady'}]]}
             send_message(chat_id, account_info, parse_mode="HTML", reply_markup=inline_kb)
