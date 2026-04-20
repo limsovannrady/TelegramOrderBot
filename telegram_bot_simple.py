@@ -613,6 +613,28 @@ def show_account_selection(chat_id):
                  reply_to_message_id=False, reply_markup={'inline_keyboard': inline_buttons})
 
 
+CONFIRM_REPLY_KEYBOARD = {
+    'keyboard': [[{'text': '✅ ទិញ'}, {'text': '❌ បោះបង់'}]],
+    'resize_keyboard': True,
+    'one_time_keyboard': True
+}
+
+def _send_order_summary(chat_id, user_id, session):
+    """Send order summary with reply keyboard. Stores summary_message_id in session."""
+    quantity = session['quantity']
+    total_price = session['total_price']
+    summary = (
+        f"<b>សូមបញ្ជាក់ការបញ្ជាទិញ</b>\n\n"
+        f"<blockquote>🔹 ចំនួន: {quantity}\n\n"
+        f"🔹 ប្រភេទ: {session['account_type']}\n\n"
+        f"🔹 តម្លៃ: {total_price}$</blockquote>"
+    )
+    resp = send_message(chat_id, summary, parse_mode="HTML", reply_markup=CONFIRM_REPLY_KEYBOARD)
+    if resp and resp.get('result'):
+        with _data_lock:
+            session['summary_message_id'] = resp['result']['message_id']
+
+
 def handle_callback_query(update):
     """Handle callback query (inline button clicks)."""
     _set_reply_to_id(None)
@@ -834,21 +856,9 @@ def handle_callback_query(update):
 
             answer_callback(callback_query['id'])
 
-            confirm_keyboard = {
-                'inline_keyboard': [[
-                    {'text': '❌ បោះបង់', 'callback_data': 'cancel_buy'},
-                    {'text': '✅ ទិញ', 'callback_data': 'confirm_buy'}
-                ]]
-            }
-            summary = (
-                f"<b>សូមបញ្ជាក់ការបញ្ជាទិញ</b>\n\n"
-                f"<blockquote>🔹 ចំនួន: {quantity}\n\n"
-                f"🔹 ប្រភេទ: {session['account_type']}\n\n"
-                f"🔹 តម្លៃ: {total_price}$</blockquote>"
-            )
             # Delete the quantity keyboard message
             delete_message_async(chat_id, callback_query['message']['message_id'])
-            send_message(chat_id, summary, parse_mode="HTML", reply_markup=confirm_keyboard)
+            _send_order_summary(chat_id, user_id, session)
             return
 
         # Handle check payment button
@@ -972,26 +982,63 @@ def handle_message(update):
                         session['state'] = 'waiting_for_confirmation'
                     save_sessions_async()
                     
-                    # Show order summary with confirm/cancel buttons
-                    confirm_keyboard = {
-                        'inline_keyboard': [
-                            [
-                                {'text': '❌ បោះបង់', 'callback_data': 'cancel_buy'},
-                                {'text': '✅ ទិញ', 'callback_data': 'confirm_buy'}
-                            ]
-                        ]
-                    }
-                    summary = (
-                        f"<b>សូមបញ្ជាក់ការបញ្ជាទិញ</b>\n\n"
-                        f"<blockquote>🔹 ចំនួន: {quantity}\n\n"
-                        f"🔹 ប្រភេទ: {session['account_type']}\n\n"
-                        f"🔹 តម្លៃ: {total_price}$</blockquote>"
-                    )
-                    send_message(chat_id, summary, parse_mode="HTML", reply_markup=confirm_keyboard)
+                    _send_order_summary(chat_id, user_id, session)
                     return
                     
                 except ValueError:
                     send_message(chat_id, "សូមបញ្ចូលចំនួនជាលេខ (ឧទាហរណ៍: 1, 2, 3)")
+                    return
+
+            # Handle confirm/cancel reply keyboard buttons
+            elif session['state'] == 'waiting_for_confirmation':
+                if text.strip() == '✅ ទិញ':
+                    with _data_lock:
+                        session['state'] = 'payment_pending'
+                    summary_msg_id = session.get('summary_message_id')
+                    if summary_msg_id:
+                        delete_message_async(chat_id, summary_msg_id)
+                    # Remove reply keyboard
+                    send_message(chat_id, "⏳ *កំពុងបង្កើត QR...*", parse_mode="Markdown",
+                                 reply_markup={'remove_keyboard': True})
+                    try:
+                        img_bytes, md5_or_err, qr_string = generate_payment_qr(session['total_price'])
+                        if not img_bytes:
+                            err_detail = md5_or_err or "មិនដឹងមូលហេតុ"
+                            send_message(chat_id, "❌ *មានបញ្ហាក្នុងការបង្កើត QR Code*\n\nសូមព្យាយាមម្តងទៀត។", parse_mode="Markdown")
+                            send_message(ADMIN_ID, f"⚠️ *QR Error (user {user_id}):*\n`{err_detail}`", parse_mode="Markdown")
+                            with _data_lock:
+                                if user_id in user_sessions:
+                                    del user_sessions[user_id]
+                            save_sessions_async()
+                            return
+                        md5_hash = md5_or_err
+                        session['md5_hash'] = md5_hash
+                        session['qr_sent_at'] = time.time()
+                        qr_response = send_photo_bytes(chat_id, img_bytes, reply_markup=CHECK_PAYMENT_KEYBOARD)
+                        if qr_response and qr_response.get('result'):
+                            session['qr_message_id'] = qr_response['result']['message_id']
+                        save_sessions_async()
+                        save_pending_payment(user_id, chat_id, session)
+                    except Exception as e:
+                        logger.error(f"Error generating KHQR: {type(e).__name__}: {e}")
+                        send_message(chat_id, "❌ *មានបញ្ហាក្នុងការបង្កើត QR Code*\n\nសូមព្យាយាមម្តងទៀត។", parse_mode="Markdown")
+                        with _data_lock:
+                            if user_id in user_sessions:
+                                del user_sessions[user_id]
+                        save_sessions_async()
+                    return
+
+                elif text.strip() == '❌ បោះបង់':
+                    summary_msg_id = session.get('summary_message_id')
+                    if summary_msg_id:
+                        delete_message_async(chat_id, summary_msg_id)
+                    with _data_lock:
+                        if user_id in user_sessions:
+                            del user_sessions[user_id]
+                    save_sessions_async()
+                    send_message(chat_id, "🚫 *បានបោះបង់ការទិញ*", parse_mode="Markdown",
+                                 reply_markup={'remove_keyboard': True})
+                    show_account_selection(chat_id)
                     return
 
         # Handle non-admin users
