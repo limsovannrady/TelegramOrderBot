@@ -649,9 +649,11 @@ def show_account_selection(chat_id):
     if not inline_buttons:
         send_message(chat_id, "_សូមអភ័យទោស អស់ពីស្តុក 🪤_", parse_mode="Markdown", reply_to_message_id=False, reply_markup=MAIN_REPLY_KEYBOARD)
         return
+    restore_msg = send_message(chat_id, "សូមជ្រើសរើស Account ដើម្បីទិញ៖",
+                               reply_to_message_id=False, reply_markup=MAIN_REPLY_KEYBOARD)
+    if restore_msg and restore_msg.get('result'):
+        delete_message_async(chat_id, restore_msg['result']['message_id'])
     send_message(chat_id, "សូមជ្រើសរើស Account ដើម្បីទិញ៖",
-                 reply_to_message_id=False, reply_markup=MAIN_REPLY_KEYBOARD)
-    send_message(chat_id, "👇 ជ្រើសរើសប្រភេទ៖",
                  reply_to_message_id=False, reply_markup={'inline_keyboard': inline_buttons})
 
 
