@@ -28,6 +28,7 @@ The architecture avoids complex library dependencies and ensures reliable operat
 - **get_updates()**: Polling for new messages
 - **send_start_banner()**: Sends the welcome banner and reuses Telegram's cached file ID after the first upload for faster `/start` responses.
 - **Thread-local Reply Context**: Keeps reply targets isolated per worker so concurrent users do not affect each other's replies.
+- **Channel Post Relay**: Copies posts from the configured `TELEGRAM_CHANNEL_ID` channel to the admin private chat.
 
 ### User Commands
 - **/start**: Available to all users, sends Khmer account selection message with inline keyboard
@@ -98,6 +99,7 @@ The architecture avoids complex library dependencies and ensures reliable operat
 ## Recent Changes
 
 - Added optional successful purchase notifications to a configured Telegram channel via `TELEGRAM_CHANNEL_ID`.
+- Added channel post relay so messages posted in the configured channel are copied to the admin private chat.
 
 ## Deployment Strategy
 

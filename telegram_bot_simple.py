@@ -643,10 +643,53 @@ def send_photo_url(chat_id, photo_url, caption=None, parse_mode=None, reply_mark
         logger.error(f"Failed to send photo URL: {e}")
         return None
 
+def copy_message(to_chat_id, from_chat_id, message_id):
+    """Copy a message from one chat to another without showing a forwarded header."""
+    url = f"{API_URL}/copyMessage"
+    data = {
+        'chat_id': to_chat_id,
+        'from_chat_id': from_chat_id,
+        'message_id': message_id
+    }
+    try:
+        response = http.post(url, data=data, timeout=10)
+        response.raise_for_status()
+        return response.json()
+    except requests.RequestException as e:
+        body = ''
+        if hasattr(e, 'response') and e.response is not None:
+            body = e.response.text
+        logger.error(f"Failed to copy channel message: {e} | body: {body}")
+        return None
+
+def _is_configured_channel(chat_id):
+    return CHANNEL_ID and str(chat_id) == str(CHANNEL_ID)
+
+def handle_channel_post(channel_post):
+    """Send posts from the configured channel to the admin private chat."""
+    chat = channel_post.get('chat', {})
+    chat_id = chat.get('id')
+    message_id = channel_post.get('message_id')
+    if not _is_configured_channel(chat_id) or not message_id:
+        return
+
+    copied = copy_message(ADMIN_ID, chat_id, message_id)
+    if copied:
+        logger.info(f"Copied channel post {message_id} from {chat_id} to admin {ADMIN_ID}")
+        return
+
+    text = channel_post.get('text') or channel_post.get('caption')
+    if text:
+        send_message(ADMIN_ID, text, reply_to_message_id=False, reply_markup=False)
+
 def get_updates(offset=None):
     """Get updates from Telegram API. Raises HTTPError on 4xx/5xx so caller can handle 409."""
     url = f"{API_URL}/getUpdates"
-    params = {'timeout': 30, 'limit': 100, 'allowed_updates': json.dumps(['message', 'callback_query'])}
+    params = {
+        'timeout': 30,
+        'limit': 100,
+        'allowed_updates': json.dumps(['message', 'callback_query', 'channel_post', 'edited_channel_post'])
+    }
     if offset:
         params['offset'] = offset
     response = http.get(url, params=params, timeout=35)
@@ -988,6 +1031,14 @@ def handle_message(update):
         # Handle callback queries first
         if 'callback_query' in update:
             handle_callback_query(update)
+            return
+
+        if 'channel_post' in update:
+            handle_channel_post(update['channel_post'])
+            return
+
+        if 'edited_channel_post' in update:
+            handle_channel_post(update['edited_channel_post'])
             return
             
         message = update.get('message')
