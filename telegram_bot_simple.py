@@ -379,6 +379,21 @@ def delete_message_async(chat_id, message_id):
         timeout=4
     )
 
+def delete_message_later(chat_id, message_id, delay_seconds=120):
+    if not message_id:
+        return
+    def delayed_delete():
+        time.sleep(delay_seconds)
+        try:
+            http.post(
+                f"{API_URL}/deleteMessage",
+                data={'chat_id': chat_id, 'message_id': message_id},
+                timeout=4
+            )
+        except Exception as e:
+            logger.warning(f"Failed delayed message delete: {e}")
+    _run_background("delete_message_later", delayed_delete)
+
 def save_pending_payment(user_id, chat_id, session):
     """Save a pending payment to Neon DB so it persists across sessions."""
     try:
@@ -688,7 +703,9 @@ def handle_channel_post(channel_post):
     text = channel_post.get('text') or channel_post.get('caption') or ''
     formatted_message = format_egets_verification_message(text)
     if formatted_message:
-        send_message(ADMIN_ID, formatted_message, reply_to_message_id=False, reply_markup=False)
+        sent = send_message(ADMIN_ID, formatted_message, reply_to_message_id=False, reply_markup=False)
+        if sent and sent.get('result'):
+            delete_message_later(ADMIN_ID, sent['result'].get('message_id'), 120)
         logger.info(f"Sent formatted channel post {message_id} from {chat_id} to admin {ADMIN_ID}")
         return
 
