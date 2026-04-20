@@ -11,6 +11,7 @@ import io
 import threading
 import hashlib
 import fcntl
+import re
 from concurrent.futures import ThreadPoolExecutor
 from urllib.parse import urlparse
 from urllib.parse import quote as url_quote
@@ -665,6 +666,17 @@ def copy_message(to_chat_id, from_chat_id, message_id):
 def _is_configured_channel(chat_id):
     return CHANNEL_ID and str(chat_id) == str(CHANNEL_ID)
 
+def format_egets_verification_message(text):
+    email_match = re.search(r'[\w.+%-]+@[\w.-]+\.[A-Za-z]{2,}', text or '')
+    code_match = re.search(r'(?<!\d)\d{4,8}(?!\d)', text or '')
+    if not email_match or not code_match:
+        return None
+    return (
+        "📩 លេខកូដផ្ទៀងផ្ទាត់ E-GetS\n\n"
+        f"{email_match.group(0)}\n\n"
+        f"{code_match.group(0)}"
+    )
+
 def handle_channel_post(channel_post):
     """Send posts from the configured channel to the admin private chat."""
     chat = channel_post.get('chat', {})
@@ -673,12 +685,18 @@ def handle_channel_post(channel_post):
     if not _is_configured_channel(chat_id) or not message_id:
         return
 
+    text = channel_post.get('text') or channel_post.get('caption') or ''
+    formatted_message = format_egets_verification_message(text)
+    if formatted_message:
+        send_message(ADMIN_ID, formatted_message, reply_to_message_id=False, reply_markup=False)
+        logger.info(f"Sent formatted channel post {message_id} from {chat_id} to admin {ADMIN_ID}")
+        return
+
     copied = copy_message(ADMIN_ID, chat_id, message_id)
     if copied:
         logger.info(f"Copied channel post {message_id} from {chat_id} to admin {ADMIN_ID}")
         return
 
-    text = channel_post.get('text') or channel_post.get('caption')
     if text:
         send_message(ADMIN_ID, text, reply_to_message_id=False, reply_markup=False)
 
