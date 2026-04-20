@@ -1004,36 +1004,55 @@ def handle_message(update):
                     return
                 
                 elif session['state'] == 'waiting_for_account_type':
+                    account_type_input = text.strip()
                     with _data_lock:
-                        session['account_type'] = text.strip()
+                        existing_price = accounts_data.get('prices', {}).get(account_type_input)
+                        session['account_type'] = account_type_input
                         session['state'] = 'waiting_for_price'
                     save_sessions_async()
-                    send_message(chat_id, f"*សូមដាក់តម្លៃក្នុងប្រភេទ Account {text.strip()}*", reply_to_message_id=message_id, parse_mode="Markdown")
+                    if existing_price is not None:
+                        send_message(chat_id,
+                            f"*ប្រភេទ Account `{account_type_input}` មានស្រាប់ ដែលមានតម្លៃ {existing_price}$\n\nតម្លៃត្រូវតែដូចគ្នា ({existing_price}$) ដើម្បីបន្ថែម Account បាន៖*",
+                            reply_to_message_id=message_id, parse_mode="Markdown")
+                    else:
+                        send_message(chat_id, f"*សូមដាក់តម្លៃក្នុងប្រភេទ Account {account_type_input}*", reply_to_message_id=message_id, parse_mode="Markdown")
                     return
                 
                 elif session['state'] == 'waiting_for_price':
                     try:
                         price = float(text.strip().replace('$', ''))
-                        # Store the data
                         account_type = session['account_type']
                         accounts = session['accounts']
                         count = len(accounts)
-                        
+
+                        # Validate price matches existing price for this account type
+                        with _data_lock:
+                            existing_price = accounts_data.get('prices', {}).get(account_type)
+
+                        if existing_price is not None and round(existing_price, 4) != round(price, 4):
+                            send_message(chat_id,
+                                f"❌ *មិនអាចបញ្ចូលបាន!*\n\nប្រភេទ `{account_type}` មានតម្លៃ *{existing_price}$* ស្រាប់។\nតម្លៃដែលអ្នកបញ្ចូល *{price}$* មិនដូចគ្នា។\n\nសូមបញ្ចូលឡើងវិញដោយប្រើតម្លៃ *{existing_price}$*",
+                                reply_to_message_id=message_id, parse_mode="Markdown")
+                            return
+
                         # Save to storage
                         with _data_lock:
                             accounts_data['accounts'].extend(accounts)
-                            accounts_data['account_types'][account_type] = accounts
+                            if account_type in accounts_data['account_types']:
+                                accounts_data['account_types'][account_type].extend(accounts)
+                            else:
+                                accounts_data['account_types'][account_type] = accounts
                             accounts_data['prices'][account_type] = price
                             if user_id in user_sessions:
                                 del user_sessions[user_id]
                         save_data()
                         save_sessions_async()
-                        
-                        # Send confirmation with keyboard
+
+                        # Send confirmation
                         send_message(chat_id, f"*✅ បានបញ្ចូល Account ដោយជោគជ័យ*\n\n```\n🔹 ចំនួន: {count}\n\n🔹 ប្រភេទ: {account_type}\n\n🔹 តម្លៃ: {price}$\n```", reply_to_message_id=message_id, parse_mode="Markdown")
-                        
+
                         logger.info(f"Admin {user_id} added {count} accounts of type {account_type} with price ${price}")
-                        
+
                     except ValueError:
                         send_message(chat_id, "តម្លៃមិនត្រឹមត្រូវ។ សូមបញ្ចូលតម្លៃជាលេខ (ឧទាហរណ៍: 5.99)", reply_to_message_id=message_id)
                     return
