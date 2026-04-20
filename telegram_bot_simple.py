@@ -649,10 +649,6 @@ def show_account_selection(chat_id):
     if not inline_buttons:
         send_message(chat_id, "_សូមអភ័យទោស អស់ពីស្តុក 🪤_", parse_mode="Markdown", reply_to_message_id=False, reply_markup=MAIN_REPLY_KEYBOARD)
         return
-    restore_msg = send_message(chat_id, "សូមជ្រើសរើស Account ដើម្បីទិញ៖",
-                               reply_to_message_id=False, reply_markup=MAIN_REPLY_KEYBOARD)
-    if restore_msg and restore_msg.get('result'):
-        delete_message_async(chat_id, restore_msg['result']['message_id'])
     send_message(chat_id, "សូមជ្រើសរើស Account ដើម្បីទិញ៖",
                  reply_to_message_id=False, reply_markup={'inline_keyboard': inline_buttons})
 
@@ -879,7 +875,7 @@ def handle_callback_query(update):
             save_sessions_async()
             summary_message_id = callback_query['message']['message_id']
             delete_message_async(chat_id, summary_message_id)
-            send_message(chat_id, "🚫 *បានបោះបង់ការទិញ*", parse_mode="Markdown")
+            send_message(chat_id, "🚫 *បានបោះបង់ការទិញ*", parse_mode="Markdown", reply_markup=MAIN_REPLY_KEYBOARD)
             show_account_selection(chat_id)
             return
 
@@ -953,7 +949,7 @@ def handle_callback_query(update):
                     del user_sessions[user_id]
             save_sessions_async()
             delete_pending_payment(user_id)
-            send_message(chat_id, "🚫 *បានបោះបង់ការទិញ*", parse_mode="Markdown")
+            send_message(chat_id, "🚫 *បានបោះបង់ការទិញ*", parse_mode="Markdown", reply_markup=MAIN_REPLY_KEYBOARD)
             show_account_selection(chat_id)
 
     except Exception as e:
@@ -1140,7 +1136,7 @@ def handle_message(update):
                         if user_id in user_sessions:
                             del user_sessions[user_id]
                     save_sessions_async()
-                    send_message(chat_id, "🚫 *បានបោះបង់ការទិញ*", parse_mode="Markdown")
+                    send_message(chat_id, "🚫 *បានបោះបង់ការទិញ*", parse_mode="Markdown", reply_markup=MAIN_REPLY_KEYBOARD)
                     show_account_selection(chat_id)
                     return
 
