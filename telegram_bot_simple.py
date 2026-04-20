@@ -994,7 +994,7 @@ def handle_message(update):
                 f"<blockquote>👤 ឈ្មោះ: {full_name}\n"
                 f"🔷 ID: <code>{user_id}</code></blockquote>"
             )
-            send_message(chat_id, account_info, parse_mode="HTML", reply_to_message_id=False)
+            send_message(chat_id, account_info, parse_mode="HTML")
             return
 
         if text.strip() == '🧾ប្រវត្តិទិញ':
