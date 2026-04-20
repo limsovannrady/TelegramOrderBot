@@ -799,12 +799,10 @@ def handle_callback_query(update):
                 md5_hash = md5_or_err
                 session['md5_hash'] = md5_hash
                 session['qr_sent_at'] = time.time()
-                qr_response = send_photo_bytes(
-                    chat_id, img_bytes,
-                    reply_markup=CHECK_PAYMENT_KEYBOARD
-                )
-                if qr_response and qr_response.get('result'):
-                    session['qr_message_id'] = qr_response['result']['message_id']
+                send_photo_bytes(chat_id, img_bytes)
+                pay_msg = send_message(chat_id, "💳 សូមបង់ប្រាក់", reply_to_message_id=False, reply_markup=CHECK_PAYMENT_KEYBOARD)
+                if pay_msg and pay_msg.get('result'):
+                    session['qr_message_id'] = pay_msg['result']['message_id']
                 send_message(chat_id, "\u200e", reply_to_message_id=False, reply_markup=MAIN_REPLY_KEYBOARD)
                 save_sessions_async()
                 save_pending_payment(user_id, chat_id, session)
@@ -1110,9 +1108,10 @@ def handle_message(update):
                         md5_hash = md5_or_err
                         session['md5_hash'] = md5_hash
                         session['qr_sent_at'] = time.time()
-                        qr_response = send_photo_bytes(chat_id, img_bytes, reply_markup=CHECK_PAYMENT_KEYBOARD)
-                        if qr_response and qr_response.get('result'):
-                            session['qr_message_id'] = qr_response['result']['message_id']
+                        send_photo_bytes(chat_id, img_bytes)
+                        pay_msg = send_message(chat_id, "💳 សូមបង់ប្រាក់", reply_to_message_id=False, reply_markup=CHECK_PAYMENT_KEYBOARD)
+                        if pay_msg and pay_msg.get('result'):
+                            session['qr_message_id'] = pay_msg['result']['message_id']
                         send_message(chat_id, "\u200e", reply_to_message_id=False, reply_markup=MAIN_REPLY_KEYBOARD)
                         save_sessions_async()
                         save_pending_payment(user_id, chat_id, session)
