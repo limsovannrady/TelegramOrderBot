@@ -805,7 +805,7 @@ def handle_callback_query(update):
                 )
                 if qr_response and qr_response.get('result'):
                     session['qr_message_id'] = qr_response['result']['message_id']
-                send_message(chat_id, "‌", reply_to_message_id=False, reply_markup=MAIN_REPLY_KEYBOARD)
+                send_message(chat_id, "\u200e", reply_to_message_id=False, reply_markup=MAIN_REPLY_KEYBOARD)
                 save_sessions_async()
                 save_pending_payment(user_id, chat_id, session)
                 logger.info(f"Generated QR for user {user_id}: Amount ${session['total_price']}, MD5: {md5_hash}")
@@ -1113,7 +1113,7 @@ def handle_message(update):
                         qr_response = send_photo_bytes(chat_id, img_bytes, reply_markup=CHECK_PAYMENT_KEYBOARD)
                         if qr_response and qr_response.get('result'):
                             session['qr_message_id'] = qr_response['result']['message_id']
-                        send_message(chat_id, "‌", reply_to_message_id=False, reply_markup=MAIN_REPLY_KEYBOARD)
+                        send_message(chat_id, "\u200e", reply_to_message_id=False, reply_markup=MAIN_REPLY_KEYBOARD)
                         save_sessions_async()
                         save_pending_payment(user_id, chat_id, session)
                     except Exception as e:
