@@ -662,15 +662,16 @@ def handle_callback_query(update):
                     reply_message += f"តម្លៃ ${price} ក្នុងមួយ Account\n\n"
                     reply_message += "*សូមជ្រើសរើសចំនួន Accounts ដែលចង់ទិញ៖*"
 
-                    # Build number keyboard (max 10 buttons, capped at available stock)
+                    # Build reply keyboard with numbers (max 10, capped at available stock)
                     max_qty = min(count, 10)
-                    qty_buttons = [
-                        {'text': str(n), 'callback_data': f'qty:{n}'}
-                        for n in range(1, max_qty + 1)
-                    ]
+                    qty_buttons = [{'text': str(n)} for n in range(1, max_qty + 1)]
                     # Split into rows of 5
                     qty_rows = [qty_buttons[i:i+5] for i in range(0, len(qty_buttons), 5)]
-                    qty_keyboard = {'inline_keyboard': qty_rows}
+                    qty_keyboard = {
+                        'keyboard': qty_rows,
+                        'resize_keyboard': True,
+                        'one_time_keyboard': True
+                    }
 
                     send_message(chat_id, reply_message, parse_mode="Markdown", reply_markup=qty_keyboard)
                     
