@@ -1019,8 +1019,7 @@ def handle_message(update):
             else:
                 import datetime
                 cambodia_tz = datetime.timezone(datetime.timedelta(hours=7))
-                msg = "🧾 <b>ប្រវត្តិទិញរបស់អ្នក (ចុងក្រោយ 20):</b>\n\n"
-                for i, row in enumerate(rows, 1):
+                for row in rows:
                     try:
                         dt = datetime.datetime.fromisoformat(str(row.get('purchased_at', '')).replace('Z', '+00:00'))
                         dt_kh = dt.astimezone(cambodia_tz).strftime("%d/%m/%Y %I:%M %p")
@@ -1032,20 +1031,22 @@ def handle_message(update):
                             accs = json.loads(accs)
                         except Exception:
                             accs = []
-                    acc_lines = ""
+                    coupon_lines = ""
                     for acc in accs:
                         if 'email' in acc:
-                            acc_lines += f"   📧 {acc['email']}\n"
+                            coupon_lines += f"\n🎟️ គូប៉ុង   : {acc['email']}"
                         else:
-                            acc_lines += f"   📧 {acc.get('phone', '')} | {acc.get('password', '')}\n"
-                    msg += (
-                        f"<blockquote>{i}. 🔹 ប្រភេទ: {row.get('account_type', 'N/A')}\n"
-                        f"   🔹 ចំនួន: {row.get('quantity', 0)}\n"
-                        f"   🔹 តម្លៃ: {row.get('total_price', 0)}$\n"
-                        f"   🕐 ម៉ោង: {dt_kh}\n"
-                        f"{acc_lines}</blockquote>\n"
+                            val = acc.get('phone') or acc.get('password') or ''
+                            coupon_lines += f"\n🎟️ គូប៉ុង   : {val}"
+                    msg = (
+                        f"📄 <b>ព័ត៌មានប្រតិបត្តិការ</b>\n\n"
+                        f"🔹 ប្រភេទ   : {row.get('account_type', 'N/A')}\n"
+                        f"🔹 ចំនួន    : {row.get('quantity', 0)}\n"
+                        f"🔹 តម្លៃ    : {row.get('total_price', 0)}$\n"
+                        f"\n🕐 ម៉ោង     : {dt_kh}"
+                        f"{coupon_lines}"
                     )
-                send_message(chat_id, msg, parse_mode="HTML")
+                    send_message(chat_id, msg, parse_mode="HTML")
             return
         
         # Check if user is in a purchase session (for all users including admin)
