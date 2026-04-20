@@ -989,7 +989,12 @@ def handle_message(update):
             return
 
         if text.strip() == '👤គណនី':
-            show_account_selection_local()
+            full_name = f"{user.get('first_name', '')} {user.get('last_name', '')}".strip() or 'N/A'
+            account_info = (
+                f"<blockquote>👤 ឈ្មោះ: {full_name}\n"
+                f"🔷 ID: <code>{user_id}</code></blockquote>"
+            )
+            send_message(chat_id, account_info, parse_mode="HTML", reply_to_message_id=False)
             return
 
         if text.strip() == '🧾ប្រវត្តិទិញ':
