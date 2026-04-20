@@ -1028,12 +1028,36 @@ def handle_message(update):
                         # Validate price matches existing price for this account type
                         with _data_lock:
                             existing_price = accounts_data.get('prices', {}).get(account_type)
+                            all_existing_emails = {
+                                a.get('email', '').lower()
+                                for a in accounts_data.get('accounts', [])
+                                if a.get('email')
+                            }
 
                         if existing_price is not None and round(existing_price, 4) != round(price, 4):
                             send_message(chat_id,
                                 f"❌ *មិនអាចបញ្ចូលបាន!*\n\nប្រភេទ `{account_type}` មានតម្លៃ *{existing_price}$* ស្រាប់។\nតម្លៃដែលអ្នកបញ្ចូល *{price}$* មិនដូចគ្នា។\n\nសូមបញ្ចូលឡើងវិញដោយប្រើតម្លៃ *{existing_price}$*",
                                 reply_to_message_id=message_id, parse_mode="Markdown")
                             return
+
+                        # Filter out duplicate emails
+                        duplicate_emails = [a['email'] for a in accounts if a.get('email', '').lower() in all_existing_emails]
+                        new_accounts = [a for a in accounts if a.get('email', '').lower() not in all_existing_emails]
+
+                        if duplicate_emails:
+                            dup_list = '\n'.join(duplicate_emails)
+                            if not new_accounts:
+                                send_message(chat_id,
+                                    f"❌ *មិនអាចបញ្ចូលបាន!*\n\nEmail ទាំងអស់មានស្រាប់ក្នុងប្រព័ន្ធ៖\n```\n{dup_list}\n```",
+                                    reply_to_message_id=message_id, parse_mode="Markdown")
+                                return
+                            else:
+                                send_message(chat_id,
+                                    f"⚠️ *Email ខាងក្រោមមានស្រាប់ ហើយត្រូវបានរំលង៖*\n```\n{dup_list}\n```",
+                                    reply_to_message_id=message_id, parse_mode="Markdown")
+
+                        accounts = new_accounts
+                        count = len(accounts)
 
                         # Save to storage
                         with _data_lock:
