@@ -1040,7 +1040,17 @@ def handle_message(update):
                                 reply_to_message_id=message_id, parse_mode="Markdown")
                             return
 
-                        # Filter out duplicate emails
+                        # Filter out duplicates within the new batch itself
+                        seen_in_batch = set()
+                        deduped_accounts = []
+                        for a in accounts:
+                            key = a.get('email', '').lower()
+                            if key not in seen_in_batch:
+                                seen_in_batch.add(key)
+                                deduped_accounts.append(a)
+                        accounts = deduped_accounts
+
+                        # Filter out emails already existing across all account types
                         duplicate_emails = [a['email'] for a in accounts if a.get('email', '').lower() in all_existing_emails]
                         new_accounts = [a for a in accounts if a.get('email', '').lower() not in all_existing_emails]
 
