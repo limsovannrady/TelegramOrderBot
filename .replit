@@ -30,3 +30,8 @@ expertMode = true
 [deployment]
 deploymentTarget = "vm"
 run = ["python", "telegram_bot_simple.py"]
+
+[userenv]
+
+[userenv.shared]
+TELEGRAM_CHANNEL_ID = "-1003756077815"
