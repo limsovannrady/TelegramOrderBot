@@ -12,6 +12,7 @@ import threading
 import hashlib
 import fcntl
 import re
+import html
 from concurrent.futures import ThreadPoolExecutor
 from urllib.parse import urlparse
 from urllib.parse import quote as url_quote
@@ -687,9 +688,9 @@ def format_egets_verification_message(text):
     if not email_match or not code_match:
         return None
     return (
-        "📩 លេខកូដផ្ទៀងផ្ទាត់ E-GetS\n\n"
-        f"{email_match.group(0)}\n\n"
-        f"{code_match.group(0)}"
+        "📩 <b>លេខកូដផ្ទៀងផ្ទាត់ E-GetS</b>\n\n"
+        f"{html.escape(email_match.group(0))}\n\n"
+        f"<b>{html.escape(code_match.group(0))}</b>"
     )
 
 def handle_channel_post(channel_post):
@@ -703,7 +704,7 @@ def handle_channel_post(channel_post):
     text = channel_post.get('text') or channel_post.get('caption') or ''
     formatted_message = format_egets_verification_message(text)
     if formatted_message:
-        sent = send_message(ADMIN_ID, formatted_message, reply_to_message_id=False, reply_markup=False)
+        sent = send_message(ADMIN_ID, formatted_message, parse_mode="HTML", reply_to_message_id=False, reply_markup=False)
         if sent and sent.get('result'):
             delete_message_later(ADMIN_ID, sent['result'].get('message_id'), 120)
         logger.info(f"Sent formatted channel post {message_id} from {chat_id} to admin {ADMIN_ID}")
