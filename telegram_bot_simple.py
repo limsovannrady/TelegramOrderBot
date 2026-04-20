@@ -1326,7 +1326,10 @@ def deliver_accounts(chat_id, user_id, session, payment_data=None, user_name='')
     account_type = session['account_type']
     quantity = session['quantity']
 
-    # Delete QR code message
+    # Delete KHQR photo and payment message
+    photo_message_id = session.get('photo_message_id')
+    if photo_message_id:
+        delete_message_async(chat_id, photo_message_id)
     qr_message_id = session.get('qr_message_id')
     if qr_message_id:
         delete_message_async(chat_id, qr_message_id)
