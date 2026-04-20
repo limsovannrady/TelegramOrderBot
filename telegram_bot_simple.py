@@ -647,10 +647,10 @@ def show_account_selection(chat_id):
             button_text = f"ទិញ {_short_label(account_type)} - ស្តុក {count}"
             inline_buttons.append([{'text': button_text, 'callback_data': f"buy:{_type_callback_id(account_type)}"}])
     if not inline_buttons:
-        send_message(chat_id, "_សូមអភ័យទោស អស់ពីស្តុក 🪤_", parse_mode="Markdown", reply_to_message_id=False)
+        send_message(chat_id, "_សូមអភ័យទោស អស់ពីស្តុក 🪤_", parse_mode="Markdown")
         return
     send_message(chat_id, "សូមជ្រើសរើស Account ដើម្បីទិញ៖",
-                 reply_to_message_id=False, reply_markup={'inline_keyboard': inline_buttons})
+                 reply_markup={'inline_keyboard': inline_buttons})
 
 
 MAIN_REPLY_KEYBOARD = {
@@ -1007,13 +1007,13 @@ def handle_message(update):
                 f"🔷 ID: <code>{user_id}</code>"
             )
             inline_kb = {'inline_keyboard': [[{'text': 'ព័ត៌មានបន្ថែម', 'url': 'https://t.me/limsovannrady'}]]}
-            send_message(chat_id, account_info, parse_mode="HTML", reply_to_message_id=False, reply_markup=inline_kb)
+            send_message(chat_id, account_info, parse_mode="HTML", reply_markup=inline_kb)
             return
 
         if text.strip() == '🧾ប្រវត្តិទិញ':
             rows = get_purchase_history(user_id, limit=20)
             if not rows:
-                send_message(chat_id, "📭 <b>អ្នកមិនទាន់មានប្រវត្តិទិញទេ។</b>", parse_mode="HTML", reply_to_message_id=False)
+                send_message(chat_id, "📭 <b>អ្នកមិនទាន់មានប្រវត្តិទិញទេ។</b>", parse_mode="HTML")
             else:
                 import datetime
                 cambodia_tz = datetime.timezone(datetime.timedelta(hours=7))
@@ -1043,7 +1043,7 @@ def handle_message(update):
                         f"   🕐 ម៉ោង: {dt_kh}\n"
                         f"{acc_lines}</blockquote>\n"
                     )
-                send_message(chat_id, msg, parse_mode="HTML", reply_to_message_id=False)
+                send_message(chat_id, msg, parse_mode="HTML")
             return
         
         # Check if user is in a purchase session (for all users including admin)
