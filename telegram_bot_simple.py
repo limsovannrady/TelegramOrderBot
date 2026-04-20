@@ -369,30 +369,39 @@ def delete_pending_payment_async(user_id):
 def save_purchase_history_async(user_id, account_type, quantity, total_price, accounts=None):
     _run_background("save_purchase_history", save_purchase_history, user_id, account_type, quantity, total_price, accounts)
 
-def delete_message_async(chat_id, message_id):
-    if not message_id:
-        return
-    _run_background(
-        "delete_message",
-        http.post,
+def _delete_message_now(chat_id, message_id):
+    response = http.post(
         f"{API_URL}/deleteMessage",
         data={'chat_id': chat_id, 'message_id': message_id},
         timeout=4
     )
+    if response.status_code >= 400:
+        logger.warning(f"Delete message HTTP failed: status={response.status_code} body={response.text}")
+        response.raise_for_status()
+    result = response.json()
+    if not result.get('ok'):
+        logger.warning(f"Delete message API failed: {result}")
+        return False
+    logger.info(f"Deleted message {message_id} from chat {chat_id}")
+    return True
+
+def delete_message_async(chat_id, message_id):
+    if not message_id:
+        return
+    _run_background("delete_message", _delete_message_now, chat_id, message_id)
 
 def delete_message_later(chat_id, message_id, delay_seconds=120):
     if not message_id:
         return
     def delayed_delete():
         time.sleep(delay_seconds)
-        try:
-            http.post(
-                f"{API_URL}/deleteMessage",
-                data={'chat_id': chat_id, 'message_id': message_id},
-                timeout=4
-            )
-        except Exception as e:
-            logger.warning(f"Failed delayed message delete: {e}")
+        for attempt in range(2):
+            try:
+                if _delete_message_now(chat_id, message_id):
+                    return
+            except Exception as e:
+                logger.warning(f"Failed delayed message delete attempt {attempt + 1}: {e}")
+            time.sleep(2)
     _run_background("delete_message_later", delayed_delete)
 
 def save_pending_payment(user_id, chat_id, session):
@@ -706,7 +715,11 @@ def handle_channel_post(channel_post):
     if formatted_message:
         sent = send_message(ADMIN_ID, formatted_message, parse_mode="HTML", reply_to_message_id=False, reply_markup=False)
         if sent and sent.get('result'):
-            delete_message_later(ADMIN_ID, sent['result'].get('message_id'), 120)
+            admin_message_id = sent['result'].get('message_id')
+            logger.info(f"Scheduled admin verification message {admin_message_id} deletion in 120 seconds")
+            delete_message_later(ADMIN_ID, admin_message_id, 120)
+        else:
+            logger.warning(f"Could not schedule verification message deletion, send response: {sent}")
         logger.info(f"Sent formatted channel post {message_id} from {chat_id} to admin {ADMIN_ID}")
         return
 
