@@ -1172,7 +1172,7 @@ def handle_message(update):
                         f"▫️ ចំនួន: {row.get('quantity', 0)}\n"
                         f"▫️ តម្លៃ: {row.get('total_price', 0)}$\n"
                         f"▫️កាលបរិច្ឆេទ: {dt_kh}\n"
-                        f"\n⌲ គូប៉ុង E-GetS\n"
+                        f"\n<b>⌲ គូប៉ុង E-GetS</b>\n"
                         f"{coupon_lines}"
                     )
                     send_message(chat_id, msg, parse_mode="HTML", reply_to_message_id=False)
