@@ -660,9 +660,19 @@ def handle_callback_query(update):
                     # Create regular message without reply quote
                     reply_message = f"មាន {count} នៅក្នុងស្តុក\n"
                     reply_message += f"តម្លៃ ${price} ក្នុងមួយ Account\n\n"
-                    reply_message += "*សូមបញ្ចូលចំនួន Accounts ដែលចង់ទិញ៖*"
-                    
-                    send_message(chat_id, reply_message, parse_mode="Markdown")
+                    reply_message += "*សូមជ្រើសរើសចំនួន Accounts ដែលចង់ទិញ៖*"
+
+                    # Build number keyboard (max 10 buttons, capped at available stock)
+                    max_qty = min(count, 10)
+                    qty_buttons = [
+                        {'text': str(n), 'callback_data': f'qty:{n}'}
+                        for n in range(1, max_qty + 1)
+                    ]
+                    # Split into rows of 5
+                    qty_rows = [qty_buttons[i:i+5] for i in range(0, len(qty_buttons), 5)]
+                    qty_keyboard = {'inline_keyboard': qty_rows}
+
+                    send_message(chat_id, reply_message, parse_mode="Markdown", reply_markup=qty_keyboard)
                     
                     # Delete the original message with inline buttons
                     delete_message_async(chat_id, callback_query['message']['message_id'])
@@ -796,6 +806,48 @@ def handle_callback_query(update):
             delete_message_async(chat_id, summary_message_id)
             send_message(chat_id, "🚫 *បានបោះបង់ការទិញ*", parse_mode="Markdown")
             show_account_selection(chat_id)
+            return
+
+        # Handle quantity number button press
+        elif callback_data.startswith('qty:'):
+            session = user_sessions.get(user_id)
+            if not session or session.get('state') != 'waiting_for_quantity':
+                answer_callback(callback_query['id'], 'សូមចាប់ផ្ដើមជ្រើសរើស Account ម្ដងទៀត។', True)
+                return
+            try:
+                quantity = int(callback_data.split(':', 1)[1])
+            except (ValueError, IndexError):
+                answer_callback(callback_query['id'], 'ចំនួនមិនត្រឹមត្រូវ។', True)
+                return
+
+            if quantity > session['available_count']:
+                answer_callback(callback_query['id'], f"សុំទោស! មានត្រឹមតែ {session['available_count']} នៅក្នុងស្តុក", True)
+                return
+
+            total_price = quantity * session['price']
+            with _data_lock:
+                session['quantity'] = quantity
+                session['total_price'] = total_price
+                session['state'] = 'waiting_for_confirmation'
+            save_sessions_async()
+
+            answer_callback(callback_query['id'])
+
+            confirm_keyboard = {
+                'inline_keyboard': [[
+                    {'text': '❌ បោះបង់', 'callback_data': 'cancel_buy'},
+                    {'text': '✅ ទិញ', 'callback_data': 'confirm_buy'}
+                ]]
+            }
+            summary = (
+                f"<b>សូមបញ្ជាក់ការបញ្ជាទិញ</b>\n\n"
+                f"<blockquote>🔹 ចំនួន: {quantity}\n\n"
+                f"🔹 ប្រភេទ: {session['account_type']}\n\n"
+                f"🔹 តម្លៃ: {total_price}$</blockquote>"
+            )
+            # Delete the quantity keyboard message
+            delete_message_async(chat_id, callback_query['message']['message_id'])
+            send_message(chat_id, summary, parse_mode="HTML", reply_markup=confirm_keyboard)
             return
 
         # Handle check payment button
