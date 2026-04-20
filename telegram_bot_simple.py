@@ -34,8 +34,8 @@ API_URL = f"https://api.telegram.org/bot{BOT_TOKEN}"
 # Persistent HTTP session — reuses TCP connections for faster Telegram API calls
 http = requests.Session()
 http.headers.update({'Connection': 'keep-alive'})
-worker_pool = ThreadPoolExecutor(max_workers=12)
-background_pool = ThreadPoolExecutor(max_workers=4)
+worker_pool = ThreadPoolExecutor(max_workers=16)
+background_pool = ThreadPoolExecutor(max_workers=8)
 _data_lock = threading.RLock()
 
 # Bakong KHQR configuration — token loaded from secret
@@ -357,6 +357,15 @@ def _run_background(name, func, *args, **kwargs):
 def save_sessions_async():
     _run_background("save_sessions", save_sessions)
 
+def save_pending_payment_async(user_id, chat_id, session):
+    _run_background("save_pending_payment", save_pending_payment, user_id, chat_id, session)
+
+def delete_pending_payment_async(user_id):
+    _run_background("delete_pending_payment", delete_pending_payment, user_id)
+
+def save_purchase_history_async(user_id, account_type, quantity, total_price, accounts=None):
+    _run_background("save_purchase_history", save_purchase_history, user_id, account_type, quantity, total_price, accounts)
+
 def delete_message_async(chat_id, message_id):
     if not message_id:
         return
@@ -488,6 +497,7 @@ def send_message(chat_id, text, reply_to_message_id=None, parse_mode=None, reply
     effective_reply_to = _get_reply_to_id() if reply_to_message_id is None else reply_to_message_id
     if effective_reply_to:
         data['reply_to_message_id'] = effective_reply_to
+        data['allow_sending_without_reply'] = True
     
     if parse_mode:
         data['parse_mode'] = parse_mode
@@ -631,7 +641,7 @@ def send_photo_url(chat_id, photo_url, caption=None, parse_mode=None, reply_mark
 def get_updates(offset=None):
     """Get updates from Telegram API. Raises HTTPError on 4xx/5xx so caller can handle 409."""
     url = f"{API_URL}/getUpdates"
-    params = {'timeout': 30, 'limit': 100}
+    params = {'timeout': 30, 'limit': 100, 'allowed_updates': json.dumps(['message', 'callback_query'])}
     if offset:
         params['offset'] = offset
     response = http.get(url, params=params, timeout=35)
@@ -805,7 +815,7 @@ def handle_callback_query(update):
                 if pay_msg and pay_msg.get('result'):
                     session['qr_message_id'] = pay_msg['result']['message_id']
                 save_sessions_async()
-                save_pending_payment(user_id, chat_id, session)
+                save_pending_payment_async(user_id, chat_id, session)
                 logger.info(f"Generated QR for user {user_id}: Amount ${session['total_price']}, MD5: {md5_hash}")
             except Exception as e:
                 logger.error(f"Error generating KHQR: {type(e).__name__}: {e}")
@@ -928,7 +938,7 @@ def handle_callback_query(update):
                 answer_callback(callback_query['id'], '✅ ការបង់ប្រាក់បានបញ្ជាក់!')
                 user_name = f"{user.get('first_name', '')} {user.get('last_name', '')}".strip()
                 deliver_accounts(chat_id, user_id, session, payment_data=payment_data, user_name=user_name)
-                delete_pending_payment(user_id)
+                delete_pending_payment_async(user_id)
                 save_sessions_async()
             else:
                 answer_callback(callback_query['id'], '⏳ មិនទាន់បានទទួលការបង់ប្រាក់។ សូមព្យាយាមម្តងទៀត។', True)
@@ -948,7 +958,7 @@ def handle_callback_query(update):
                 if user_id in user_sessions:
                     del user_sessions[user_id]
             save_sessions_async()
-            delete_pending_payment(user_id)
+            delete_pending_payment_async(user_id)
             send_message(chat_id, "🚫 *បានបោះបង់ការទិញ*", parse_mode="Markdown", reply_markup=MAIN_REPLY_KEYBOARD)
             show_account_selection(chat_id)
 
@@ -1121,7 +1131,7 @@ def handle_message(update):
                         if pay_msg and pay_msg.get('result'):
                             session['qr_message_id'] = pay_msg['result']['message_id']
                         save_sessions_async()
-                        save_pending_payment(user_id, chat_id, session)
+                        save_pending_payment_async(user_id, chat_id, session)
                     except Exception as e:
                         logger.error(f"Error generating KHQR: {type(e).__name__}: {e}")
                         send_message(chat_id, "❌ *មានបញ្ហាក្នុងការបង្កើត QR Code*\n\nសូមព្យាយាមម្តងទៀត។", parse_mode="Markdown")
@@ -1359,7 +1369,7 @@ def deliver_accounts(chat_id, user_id, session, payment_data=None, user_name='')
         return
 
     save_data()
-    save_purchase_history(user_id, account_type, quantity, session.get('total_price', 0), delivered_accounts)
+    save_purchase_history_async(user_id, account_type, quantity, session.get('total_price', 0), delivered_accounts)
 
     accounts_message = f'<tg-emoji emoji-id="5436040291507247633">🎉</tg-emoji> <b>ការទិញបានបញ្ជាក់ដោយជោគជ័យ</b>\n\n'
     accounts_message += f"<blockquote>🔹 ប្រភេទ: {account_type}\n"
