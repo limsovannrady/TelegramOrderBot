@@ -716,8 +716,8 @@ def handle_channel_post(channel_post):
         sent = send_message(ADMIN_ID, formatted_message, parse_mode="HTML", reply_to_message_id=False, reply_markup=False)
         if sent and sent.get('result'):
             admin_message_id = sent['result'].get('message_id')
-            logger.info(f"Scheduled admin verification message {admin_message_id} deletion in 120 seconds")
-            delete_message_later(ADMIN_ID, admin_message_id, 120)
+            logger.info(f"Scheduled admin verification message {admin_message_id} deletion in 60 seconds")
+            delete_message_later(ADMIN_ID, admin_message_id, 60)
         else:
             logger.warning(f"Could not schedule verification message deletion, send response: {sent}")
         logger.info(f"Sent formatted channel post {message_id} from {chat_id} to admin {ADMIN_ID}")

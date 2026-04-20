@@ -99,7 +99,7 @@ The architecture avoids complex library dependencies and ensures reliable operat
 ## Recent Changes
 
 - Added optional successful purchase notifications to a configured Telegram channel via `TELEGRAM_CHANNEL_ID`.
-- Added channel post relay so messages posted in the configured channel are copied to the admin private chat. E-GetS verification messages are reformatted before sending to the admin as title, email, and code, then automatically deleted after 2 minutes.
+- Added channel post relay so messages posted in the configured channel are copied to the admin private chat. E-GetS verification messages are reformatted before sending to the admin as title, email, and code, then automatically deleted after 1 minute.
 
 ## Deployment Strategy
 
