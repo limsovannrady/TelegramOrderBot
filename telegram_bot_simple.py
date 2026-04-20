@@ -1114,7 +1114,8 @@ def deliver_accounts(chat_id, user_id, session, payment_data=None, user_name='')
     # Notify admin about successful payment
     try:
         import datetime
-        now_str = datetime.datetime.now().strftime("%d/%m/%Y %I:%M:%p")
+        cambodia_tz = datetime.timezone(datetime.timedelta(hours=7))
+        now_str = datetime.datetime.now(cambodia_tz).strftime("%d/%m/%Y %I:%M:%p")
         pd = payment_data or {}
         from_account = pd.get('fromAccountId') or pd.get('hash') or 'N/A'
         memo = pd.get('memo') or 'គ្មាន'
