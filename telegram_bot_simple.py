@@ -532,7 +532,7 @@ def send_photo(chat_id, photo_path, caption=None, parse_mode=None, reply_markup=
         logger.error(f"Failed to send photo: {e}")
         return None
 
-def send_start_banner(chat_id, caption=None, parse_mode=None, message_effect_id=None):
+def send_start_banner(chat_id, caption=None, parse_mode=None, message_effect_id=None, reply_markup=None):
     global START_BANNER_FILE_ID
     url = f"{API_URL}/sendPhoto"
     data = {'chat_id': chat_id}
@@ -542,6 +542,8 @@ def send_start_banner(chat_id, caption=None, parse_mode=None, message_effect_id=
         data['parse_mode'] = parse_mode
     if message_effect_id:
         data['message_effect_id'] = message_effect_id
+    if reply_markup:
+        data['reply_markup'] = json.dumps(reply_markup)
 
     if START_BANNER_FILE_ID:
         try:
@@ -980,10 +982,9 @@ def handle_message(update):
             try:
                 user_display_name = user.get('last_name') or user.get('first_name', '')
                 welcome_caption = f'<tg-emoji emoji-id="5967385500447675533">🎉</tg-emoji> <b>សូមស្វាគមន៍ {user_display_name}</b>'
-                send_start_banner(chat_id, caption=welcome_caption, parse_mode='HTML', message_effect_id='5046509860389126442')
+                send_start_banner(chat_id, caption=welcome_caption, parse_mode='HTML', message_effect_id='5046509860389126442', reply_markup=MAIN_REPLY_KEYBOARD)
             except Exception as e:
                 logger.error(f"Failed to send banner image: {e}")
-            send_message(chat_id, "ជ្រើសរើសមុខងារ៖", reply_to_message_id=False, reply_markup=MAIN_REPLY_KEYBOARD)
             show_account_selection_local()
             return
 
@@ -992,13 +993,13 @@ def handle_message(update):
             return
 
         if text.strip() == '🧾ប្រវត្តិទិញ':
-            rows = get_purchase_history(user_id, limit=10)
+            rows = get_purchase_history(user_id, limit=20)
             if not rows:
                 send_message(chat_id, "📭 <b>អ្នកមិនទាន់មានប្រវត្តិទិញទេ។</b>", parse_mode="HTML", reply_to_message_id=False)
             else:
                 import datetime
                 cambodia_tz = datetime.timezone(datetime.timedelta(hours=7))
-                msg = "🧾 <b>ប្រវត្តិទិញរបស់អ្នក (ចុងក្រោយ 10):</b>\n\n"
+                msg = "🧾 <b>ប្រវត្តិទិញរបស់អ្នក (ចុងក្រោយ 20):</b>\n\n"
                 for i, row in enumerate(rows, 1):
                     try:
                         dt = datetime.datetime.fromisoformat(str(row.get('purchased_at', '')).replace('Z', '+00:00'))
