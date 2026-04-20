@@ -1006,7 +1006,8 @@ def handle_message(update):
                 f"<blockquote>👤 ឈ្មោះ: {full_name}\n"
                 f"🔷 ID: <code>{user_id}</code></blockquote>"
             )
-            send_message(chat_id, account_info, parse_mode="HTML", reply_to_message_id=False)
+            inline_kb = {'inline_keyboard': [[{'text': 'ព័ត៌មានបន្ថែម', 'url': 'https://t.me/limsovannrady'}]]}
+            send_message(chat_id, account_info, parse_mode="HTML", reply_to_message_id=False, reply_markup=inline_kb)
             return
 
         if text.strip() == '🧾ប្រវត្តិទិញ':
