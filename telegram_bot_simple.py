@@ -1019,6 +1019,7 @@ def handle_message(update):
             else:
                 import datetime
                 cambodia_tz = datetime.timezone(datetime.timedelta(hours=7))
+                send_message(chat_id, "ការទិញចំនួន ២០ ដងចុងក្រោយរបស់អ្នក:", reply_to_message_id=False)
                 for row in rows:
                     try:
                         dt = datetime.datetime.fromisoformat(str(row.get('purchased_at', '')).replace('Z', '+00:00'))
