@@ -29,6 +29,7 @@ logger = logging.getLogger(__name__)
 BOT_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN", "")
 KHMER_MESSAGE = "ជ្រើសរើស Account ដើម្បីបញ្ជាទិញ"
 ADMIN_ID = 5002402843
+CHANNEL_ID = os.environ.get("TELEGRAM_CHANNEL_ID", "").strip()
 API_URL = f"https://api.telegram.org/bot{BOT_TOKEN}"
 
 # Persistent HTTP session — reuses TCP connections for faster Telegram API calls
@@ -502,8 +503,12 @@ def send_message(chat_id, text, reply_to_message_id=None, parse_mode=None, reply
     if parse_mode:
         data['parse_mode'] = parse_mode
 
-    effective_markup = reply_markup if reply_markup is not None else MAIN_REPLY_KEYBOARD
-    data['reply_markup'] = json.dumps(effective_markup)
+    if reply_markup is False:
+        effective_markup = None
+    else:
+        effective_markup = reply_markup if reply_markup is not None else MAIN_REPLY_KEYBOARD
+    if effective_markup is not None:
+        data['reply_markup'] = json.dumps(effective_markup)
 
     if message_effect_id:
         data['message_effect_id'] = message_effect_id
@@ -692,6 +697,18 @@ def _send_order_summary(chat_id, user_id, session):
     if resp and resp.get('result'):
         with _data_lock:
             session['summary_message_id'] = resp['result']['message_id']
+
+
+def _purchase_notification_targets():
+    targets = [ADMIN_ID]
+    if CHANNEL_ID and str(CHANNEL_ID) != str(ADMIN_ID):
+        targets.append(CHANNEL_ID)
+    return targets
+
+
+def send_purchase_notification(message):
+    for target in _purchase_notification_targets():
+        send_message(target, message, parse_mode="HTML", reply_to_message_id=False, reply_markup=False)
 
 
 def handle_callback_query(update):
@@ -1384,7 +1401,7 @@ def deliver_accounts(chat_id, user_id, session, payment_data=None, user_name='')
 
     send_message(chat_id, accounts_message, parse_mode="HTML", message_effect_id="5046509860389126442", reply_markup=MAIN_REPLY_KEYBOARD)
 
-    # Notify admin about successful payment
+    # Notify admin/channel about successful payment
     try:
         import datetime
         cambodia_tz = datetime.timezone(datetime.timedelta(hours=7))
@@ -1405,7 +1422,7 @@ def deliver_accounts(chat_id, user_id, session, payment_data=None, user_name='')
             f"🧾 <b>លេខយោង:</b> <code>{ref}</code>\n"
             f"⏰ <b>ម៉ោង:</b> {now_str}"
         )
-        send_message(ADMIN_ID, admin_msg, parse_mode="HTML")
+        send_purchase_notification(admin_msg)
     except Exception as e:
         logger.error(f"Failed to send admin payment notification: {e}")
 

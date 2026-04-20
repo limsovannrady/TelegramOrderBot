@@ -90,9 +90,14 @@ The architecture avoids complex library dependencies and ensures reliable operat
 - `BOT_TOKEN`: Telegram bot authentication token (stored securely as `TELEGRAM_BOT_TOKEN` secret)
 - `BOT_USERNAME`: @Coupon2025_Robot
 - `KHMER_MESSAGE`: "ជ្រើសរើស Account ដើម្បីបញ្ជាទិញ"
+- `TELEGRAM_CHANNEL_ID`: Optional channel/group ID for successful purchase notifications. When set, successful payment notifications are sent to both the admin and this channel. Channels usually use an ID like `-1001234567890` and the bot must be an admin/member there.
 
 ### Third-party Services
 - **Telegram Bot API**: Direct HTTP API integration for message handling and user interaction
+
+## Recent Changes
+
+- Added optional successful purchase notifications to a configured Telegram channel via `TELEGRAM_CHANNEL_ID`.
 
 ## Deployment Strategy
 
