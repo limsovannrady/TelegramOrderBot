@@ -690,7 +690,7 @@ def format_egets_verification_message(text):
     return (
         "📩 <b>លេខកូដផ្ទៀងផ្ទាត់ E-GetS</b>\n\n"
         f"{html.escape(email_match.group(0))}\n\n"
-        f"<b>{html.escape(code_match.group(0))}</b>"
+        f"<code>{html.escape(code_match.group(0))}</code>"
     )
 
 def handle_channel_post(channel_post):
