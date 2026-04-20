@@ -1095,8 +1095,6 @@ def handle_message(update):
                     summary_msg_id = session.get('summary_message_id')
                     if summary_msg_id:
                         delete_message_async(chat_id, summary_msg_id)
-                    # Remove reply keyboard
-                    send_message(chat_id, "⏳ *កំពុងបង្កើត QR...*", parse_mode="Markdown")
                     try:
                         img_bytes, md5_or_err, qr_string = generate_payment_qr(session['total_price'])
                         if not img_bytes:
