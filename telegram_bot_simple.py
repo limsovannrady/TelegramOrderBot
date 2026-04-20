@@ -1034,16 +1034,17 @@ def handle_message(update):
                     coupon_lines = ""
                     for acc in accs:
                         if 'email' in acc:
-                            coupon_lines += f"\n🎟️ គូប៉ុង   : {acc['email']}"
+                            coupon_lines += f"\n{acc['email']}"
                         else:
                             val = acc.get('phone') or acc.get('password') or ''
-                            coupon_lines += f"\n🎟️ គូប៉ុង   : {val}"
+                            coupon_lines += f"\n{val}"
                     msg = (
-                        f"📄 <b>ព័ត៌មានប្រតិបត្តិការ</b>\n\n"
-                        f"🔹 ប្រភេទ   : {row.get('account_type', 'N/A')}\n"
-                        f"🔹 ចំនួន    : {row.get('quantity', 0)}\n"
-                        f"🔹 តម្លៃ    : {row.get('total_price', 0)}$\n"
-                        f"\n🕐 ម៉ោង     : {dt_kh}"
+                        f"⎙ <b>ព័ត៌មានប្រតិបត្តិការ</b>\n\n"
+                        f"▫️ ប្រភេទ: {row.get('account_type', 'N/A')}\n"
+                        f"▫️ ចំនួន: {row.get('quantity', 0)}\n"
+                        f"▫️ តម្លៃ: {row.get('total_price', 0)}$\n"
+                        f"▫️កាលបរិច្ឆេទ: {dt_kh}\n"
+                        f"\n⌲ គូប៉ុង E-GetS\n"
                         f"{coupon_lines}"
                     )
                     send_message(chat_id, msg, parse_mode="HTML")
