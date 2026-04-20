@@ -485,10 +485,10 @@ def send_message(chat_id, text, reply_to_message_id=None, parse_mode=None, reply
     
     if parse_mode:
         data['parse_mode'] = parse_mode
-    
-    if reply_markup:
-        data['reply_markup'] = json.dumps(reply_markup)
-    
+
+    effective_markup = reply_markup if reply_markup is not None else MAIN_REPLY_KEYBOARD
+    data['reply_markup'] = json.dumps(effective_markup)
+
     if message_effect_id:
         data['message_effect_id'] = message_effect_id
     
@@ -799,7 +799,6 @@ def handle_callback_query(update):
                 )
                 if qr_response and qr_response.get('result'):
                     session['qr_message_id'] = qr_response['result']['message_id']
-                send_message(chat_id, "‎", reply_to_message_id=False, reply_markup=MAIN_REPLY_KEYBOARD)
                 save_sessions_async()
                 save_pending_payment(user_id, chat_id, session)
                 logger.info(f"Generated QR for user {user_id}: Amount ${session['total_price']}, MD5: {md5_hash}")
@@ -1077,8 +1076,7 @@ def handle_message(update):
                     if summary_msg_id:
                         delete_message_async(chat_id, summary_msg_id)
                     # Remove reply keyboard
-                    send_message(chat_id, "⏳ *កំពុងបង្កើត QR...*", parse_mode="Markdown",
-                                 reply_markup={'remove_keyboard': True})
+                    send_message(chat_id, "⏳ *កំពុងបង្កើត QR...*", parse_mode="Markdown")
                     try:
                         img_bytes, md5_or_err, qr_string = generate_payment_qr(session['total_price'])
                         if not img_bytes:
@@ -1096,7 +1094,6 @@ def handle_message(update):
                         qr_response = send_photo_bytes(chat_id, img_bytes, reply_markup=CHECK_PAYMENT_KEYBOARD)
                         if qr_response and qr_response.get('result'):
                             session['qr_message_id'] = qr_response['result']['message_id']
-                        send_message(chat_id, "‎", reply_to_message_id=False, reply_markup=MAIN_REPLY_KEYBOARD)
                         save_sessions_async()
                         save_pending_payment(user_id, chat_id, session)
                     except Exception as e:
@@ -1116,8 +1113,7 @@ def handle_message(update):
                         if user_id in user_sessions:
                             del user_sessions[user_id]
                     save_sessions_async()
-                    send_message(chat_id, "🚫 *បានបោះបង់ការទិញ*", parse_mode="Markdown",
-                                 reply_markup={'remove_keyboard': True})
+                    send_message(chat_id, "🚫 *បានបោះបង់ការទិញ*", parse_mode="Markdown")
                     show_account_selection(chat_id)
                     return
 
