@@ -1304,8 +1304,10 @@ def handle_message(update):
 
 CHECK_PAYMENT_KEYBOARD = {
     'inline_keyboard': [
-        [{'text': '✅ ពិនិត្យការបង់ប្រាក់', 'callback_data': 'check_payment'}],
-        [{'text': '🚫 បោះបង់', 'callback_data': 'cancel_purchase'}]
+        [
+            {'text': '🚫 បោះបង់', 'callback_data': 'cancel_purchase'},
+            {'text': '✅ ពិនិត្យការបង់ប្រាក់', 'callback_data': 'check_payment'}
+        ]
     ]
 }
 
