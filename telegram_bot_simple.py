@@ -647,9 +647,11 @@ def show_account_selection(chat_id):
             button_text = f"ទិញ {_short_label(account_type)} - ស្តុក {count}"
             inline_buttons.append([{'text': button_text, 'callback_data': f"buy:{_type_callback_id(account_type)}"}])
     if not inline_buttons:
-        send_message(chat_id, "_សូមអភ័យទោស អស់ពីស្តុក 🪤_", parse_mode="Markdown", reply_to_message_id=False)
+        send_message(chat_id, "_សូមអភ័យទោស អស់ពីស្តុក 🪤_", parse_mode="Markdown", reply_to_message_id=False, reply_markup=MAIN_REPLY_KEYBOARD)
         return
     send_message(chat_id, "សូមជ្រើសរើស Account ដើម្បីទិញ៖",
+                 reply_to_message_id=False, reply_markup=MAIN_REPLY_KEYBOARD)
+    send_message(chat_id, "👇 ជ្រើសរើសប្រភេទ៖",
                  reply_to_message_id=False, reply_markup={'inline_keyboard': inline_buttons})
 
 
