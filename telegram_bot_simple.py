@@ -1023,7 +1023,7 @@ def handle_message(update):
                 for row in rows:
                     try:
                         dt = datetime.datetime.fromisoformat(str(row.get('purchased_at', '')).replace('Z', '+00:00'))
-                        dt_kh = dt.astimezone(cambodia_tz).strftime("%d/%m/%Y %I:%M %p")
+                        dt_kh = dt.astimezone(cambodia_tz).strftime("%d/%m/%Y %H:%M")
                     except Exception:
                         dt_kh = str(row.get('purchased_at', ''))
                     accs = row.get('accounts') or []
@@ -1378,7 +1378,7 @@ def deliver_accounts(chat_id, user_id, session, payment_data=None, user_name='')
     try:
         import datetime
         cambodia_tz = datetime.timezone(datetime.timedelta(hours=7))
-        now_str = datetime.datetime.now(cambodia_tz).strftime("%d/%m/%Y %I:%M:%p")
+        now_str = datetime.datetime.now(cambodia_tz).strftime("%d/%m/%Y %H:%M")
         pd = payment_data or {}
         from_account = pd.get('fromAccountId') or pd.get('hash') or 'N/A'
         memo = pd.get('memo') or 'គ្មាន'
