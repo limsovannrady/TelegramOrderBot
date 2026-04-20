@@ -748,6 +748,9 @@ def handle_channel_post(channel_post):
         if buyer_id:
             buyer_sent = send_message(buyer_id, formatted_message, parse_mode="HTML", reply_to_message_id=False, reply_markup=False)
             if buyer_sent and buyer_sent.get('result'):
+                buyer_message_id = buyer_sent['result'].get('message_id')
+                logger.info(f"Scheduled buyer verification message {buyer_message_id} deletion in 60 seconds")
+                delete_message_later(buyer_id, buyer_message_id, 60)
                 logger.info(f"Sent verification code for {verification_email} to buyer {buyer_id}")
             else:
                 logger.warning(f"Failed to send verification code for {verification_email} to buyer {buyer_id}: {buyer_sent}")
