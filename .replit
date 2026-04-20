@@ -14,15 +14,18 @@ author = "agent"
 
 [[workflows.workflow.tasks]]
 task = "workflow.run"
-args = "Working Bot"
+args = "Vercel Webhook Mode"
 
 [[workflows.workflow]]
-name = "Working Bot"
+name = "Vercel Webhook Mode"
 author = "agent"
 
 [[workflows.workflow.tasks]]
 task = "shell.exec"
-args = "python telegram_bot_simple.py"
+args = "python -c \"import time; print('Vercel webhook mode active. Local polling disabled.', flush=True); time.sleep(31536000)\""
+
+[workflows.workflow.metadata]
+outputType = "console"
 
 [agent]
 expertMode = true
