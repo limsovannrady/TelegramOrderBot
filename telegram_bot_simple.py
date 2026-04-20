@@ -1028,9 +1028,11 @@ def handle_message(update):
                         # Validate price matches existing price for this account type
                         with _data_lock:
                             existing_price = accounts_data.get('prices', {}).get(account_type)
+                            # Only check emails currently in stock (not already sold)
                             all_existing_emails = {
                                 a.get('email', '').lower()
-                                for a in accounts_data.get('accounts', [])
+                                for accs in accounts_data.get('account_types', {}).values()
+                                for a in accs
                                 if a.get('email')
                             }
 
