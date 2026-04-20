@@ -1369,7 +1369,7 @@ def deliver_accounts(chat_id, user_id, session, payment_data=None, user_name='')
             accounts_message += f"{account.get('phone', '')} | {account.get('password', '')}\n"
     accounts_message += f"\n<i>សូមអរគុណសម្រាប់ការទិញ <tg-emoji emoji-id=\"5897474556834091884\">🙏</tg-emoji></i>"
 
-    send_message(chat_id, accounts_message, parse_mode="HTML", message_effect_id="5046509860389126442")
+    send_message(chat_id, accounts_message, parse_mode="HTML", message_effect_id="5046509860389126442", reply_markup=MAIN_REPLY_KEYBOARD)
 
     # Notify admin about successful payment
     try:
