@@ -206,7 +206,8 @@ def compute_md5(qr: str) -> str:
     return hashlib.md5(qr.encode('utf-8')).hexdigest()
 
 def check_payment_status(md5):
-    """Check payment directly against Bakong relay API — no library dependency."""
+    """Check payment directly against Bakong relay API — no library dependency.
+    Returns (is_paid: bool, payment_data: dict or None)."""
     try:
         base = _bakong_api_url()
         resp = http.post(
@@ -220,10 +221,12 @@ def check_payment_status(md5):
         )
         data = resp.json()
         logger.info(f"check_payment response: status={resp.status_code} body={data}")
-        return data.get("responseCode") == 0
+        if data.get("responseCode") == 0:
+            return True, data.get("data", {})
+        return False, None
     except Exception as e:
         logger.error(f"Failed to check payment status: {type(e).__name__}: {e}")
-    return False
+    return False, None
 
 NEON_DATABASE_URL = os.environ.get("NEON_DATABASE_URL", "")
 _neon_host = urlparse(NEON_DATABASE_URL).hostname if NEON_DATABASE_URL else ""
@@ -809,10 +812,10 @@ def handle_callback_query(update):
             if not md5:
                 answer_callback(callback_query['id'], 'មានបញ្ហាក្នុងការស្វែងរក QR។ សូមចាប់ផ្តើមម្តងទៀត។', True)
                 return
-            is_paid = check_payment_status(md5)
+            is_paid, payment_data = check_payment_status(md5)
             if is_paid:
                 answer_callback(callback_query['id'], '✅ ការបង់ប្រាក់បានបញ្ជាក់!')
-                deliver_accounts(chat_id, user_id, session)
+                deliver_accounts(chat_id, user_id, session, payment_data=payment_data)
                 delete_pending_payment(user_id)
                 save_sessions_async()
             else:
@@ -1057,7 +1060,7 @@ CHECK_PAYMENT_KEYBOARD = {
     ]
 }
 
-def deliver_accounts(chat_id, user_id, session):
+def deliver_accounts(chat_id, user_id, session, payment_data=None):
     """Deliver purchased accounts to user after confirmed payment."""
     account_type = session['account_type']
     quantity = session['quantity']
@@ -1106,6 +1109,29 @@ def deliver_accounts(chat_id, user_id, session):
     accounts_message += f"\n<i>សូមអរគុណសម្រាប់ការទិញ <tg-emoji emoji-id=\"5897474556834091884\">🙏</tg-emoji></i>"
 
     send_message(chat_id, accounts_message, parse_mode="HTML", message_effect_id="5046509860389126442")
+
+    # Notify admin about successful payment
+    try:
+        import datetime
+        now_str = datetime.datetime.now().strftime("%d/%m/%Y %I:%M:%p")
+        pd = payment_data or {}
+        from_account = pd.get('fromAccountId') or pd.get('hash') or 'N/A'
+        memo = pd.get('memo') or 'គ្មាន'
+        ref = pd.get('externalRef') or pd.get('transactionId') or pd.get('md5') or 'N/A'
+        amount = session.get('total_price', 0)
+        admin_msg = (
+            "🎉 <b>ទទួលបានការបង់ប្រាក់ជោគជ័យ</b>\n"
+            "━━━━━━━━━━━━━━━━━━━\n"
+            f"🆔 <b>អ្នកទិញ (ID):</b> <code>{user_id}</code>\n"
+            f"💵 <b>ទឹកប្រាក់:</b> {amount} USD\n"
+            f"👤 <b>ពីគណនី:</b> <code>{from_account}</code>\n"
+            f"📝 <b>ចំណាំ:</b> {memo}\n"
+            f"🧾 <b>លេខយោង:</b> <code>{ref}</code>\n"
+            f"⏰ <b>ម៉ោង:</b> {now_str}"
+        )
+        send_message(ADMIN_ID, admin_msg, parse_mode="HTML")
+    except Exception as e:
+        logger.error(f"Failed to send admin payment notification: {e}")
 
     save_sessions_async()
 
