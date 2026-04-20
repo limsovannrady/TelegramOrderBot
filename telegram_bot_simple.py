@@ -735,9 +735,8 @@ def handle_callback_query(update):
                     reply_message += f"តម្លៃ ${price} ក្នុងមួយ Account\n\n"
                     reply_message += "*សូមជ្រើសរើសចំនួន Accounts ដែលចង់ទិញ៖*"
 
-                    # Build reply keyboard with numbers (max 10, capped at available stock)
-                    max_qty = min(count, 10)
-                    qty_buttons = [{'text': str(n)} for n in range(1, max_qty + 1)]
+                    # Build reply keyboard with all available quantities
+                    qty_buttons = [{'text': str(n)} for n in range(1, count + 1)]
                     # Split into rows of 5
                     qty_rows = [qty_buttons[i:i+5] for i in range(0, len(qty_buttons), 5)]
                     qty_keyboard = {
