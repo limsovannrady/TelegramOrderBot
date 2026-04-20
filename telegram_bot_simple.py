@@ -1019,7 +1019,7 @@ def handle_message(update):
             else:
                 import datetime
                 cambodia_tz = datetime.timezone(datetime.timedelta(hours=7))
-                send_message(chat_id, "ការទិញចំនួន ២០ ដងចុងក្រោយរបស់អ្នក:", reply_to_message_id=False)
+                send_message(chat_id, "ការទិញចំនួន ២០ ដងចុងក្រោយរបស់អ្នក:")
                 for row in rows:
                     try:
                         dt = datetime.datetime.fromisoformat(str(row.get('purchased_at', '')).replace('Z', '+00:00'))
@@ -1048,7 +1048,7 @@ def handle_message(update):
                         f"\n⌲ គូប៉ុង E-GetS\n"
                         f"{coupon_lines}"
                     )
-                    send_message(chat_id, msg, parse_mode="HTML")
+                    send_message(chat_id, msg, parse_mode="HTML", reply_to_message_id=False)
             return
         
         # Check if user is in a purchase session (for all users including admin)
