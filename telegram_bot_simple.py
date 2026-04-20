@@ -479,6 +479,26 @@ def get_purchase_history(user_id, limit=10):
         logger.error(f"Failed to get purchase history: {e}")
     return []
 
+def find_buyer_by_email(email):
+    try:
+        r = _neon_query(
+            "SELECT user_id, accounts FROM bot_purchase_history WHERE accounts::text ILIKE $1 ORDER BY purchased_at DESC LIMIT 20",
+            [f"%{email}%"]
+        )
+        for row in r.get('rows', []):
+            accounts = row.get('accounts') or []
+            if isinstance(accounts, str):
+                try:
+                    accounts = json.loads(accounts)
+                except Exception:
+                    accounts = []
+            for account in accounts:
+                if str(account.get('email', '')).lower() == email.lower():
+                    return int(row.get('user_id'))
+    except Exception as e:
+        logger.error(f"Failed to find buyer by email {email}: {e}")
+    return None
+
 _init_db()
 
 # User session storage for tracking conversation state
@@ -691,15 +711,18 @@ def copy_message(to_chat_id, from_chat_id, message_id):
 def _is_configured_channel(chat_id):
     return CHANNEL_ID and str(chat_id) == str(CHANNEL_ID)
 
-def format_egets_verification_message(text):
+def parse_egets_verification_message(text):
     email_match = re.search(r'[\w.+%-]+@[\w.-]+\.[A-Za-z]{2,}', text or '')
     code_match = re.search(r'(?<!\d)\d{4,8}(?!\d)', text or '')
     if not email_match or not code_match:
-        return None
+        return None, None
+    return email_match.group(0), code_match.group(0)
+
+def format_egets_verification_message(email, code):
     return (
         "📩 <b>លេខកូដផ្ទៀងផ្ទាត់ E-GetS</b>\n\n"
-        f"{html.escape(email_match.group(0))}\n\n"
-        f"<code>{html.escape(code_match.group(0))}</code>"
+        f"{html.escape(email)}\n\n"
+        f"<code>{html.escape(code)}</code>"
     )
 
 def handle_channel_post(channel_post):
@@ -711,8 +734,9 @@ def handle_channel_post(channel_post):
         return
 
     text = channel_post.get('text') or channel_post.get('caption') or ''
-    formatted_message = format_egets_verification_message(text)
-    if formatted_message:
+    verification_email, verification_code = parse_egets_verification_message(text)
+    if verification_email and verification_code:
+        formatted_message = format_egets_verification_message(verification_email, verification_code)
         sent = send_message(ADMIN_ID, formatted_message, parse_mode="HTML", reply_to_message_id=False, reply_markup=False)
         if sent and sent.get('result'):
             admin_message_id = sent['result'].get('message_id')
@@ -720,6 +744,15 @@ def handle_channel_post(channel_post):
             delete_message_later(ADMIN_ID, admin_message_id, 60)
         else:
             logger.warning(f"Could not schedule verification message deletion, send response: {sent}")
+        buyer_id = find_buyer_by_email(verification_email)
+        if buyer_id:
+            buyer_sent = send_message(buyer_id, formatted_message, parse_mode="HTML", reply_to_message_id=False, reply_markup=False)
+            if buyer_sent and buyer_sent.get('result'):
+                logger.info(f"Sent verification code for {verification_email} to buyer {buyer_id}")
+            else:
+                logger.warning(f"Failed to send verification code for {verification_email} to buyer {buyer_id}: {buyer_sent}")
+        else:
+            logger.warning(f"No buyer found for verification email {verification_email}")
         logger.info(f"Sent formatted channel post {message_id} from {chat_id} to admin {ADMIN_ID}")
         return
 
