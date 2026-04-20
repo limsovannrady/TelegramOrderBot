@@ -614,7 +614,7 @@ def show_account_selection(chat_id):
 
 
 CONFIRM_REPLY_KEYBOARD = {
-    'keyboard': [[{'text': '✅ ទិញ'}, {'text': '❌ បោះបង់'}]],
+    'keyboard': [[{'text': '❌ បោះបង់'}, {'text': '✅ បញ្ជាក់ការទិញ'}]],
     'resize_keyboard': True,
     'one_time_keyboard': True
 }
@@ -991,7 +991,7 @@ def handle_message(update):
 
             # Handle confirm/cancel reply keyboard buttons
             elif session['state'] == 'waiting_for_confirmation':
-                if text.strip() == '✅ ទិញ':
+                if text.strip() == '✅ បញ្ជាក់ការទិញ':
                     with _data_lock:
                         session['state'] = 'payment_pending'
                     summary_msg_id = session.get('summary_message_id')
