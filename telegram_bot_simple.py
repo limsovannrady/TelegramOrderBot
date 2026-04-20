@@ -815,7 +815,8 @@ def handle_callback_query(update):
             is_paid, payment_data = check_payment_status(md5)
             if is_paid:
                 answer_callback(callback_query['id'], '✅ ការបង់ប្រាក់បានបញ្ជាក់!')
-                deliver_accounts(chat_id, user_id, session, payment_data=payment_data)
+                user_name = f"{user.get('first_name', '')} {user.get('last_name', '')}".strip()
+                deliver_accounts(chat_id, user_id, session, payment_data=payment_data, user_name=user_name)
                 delete_pending_payment(user_id)
                 save_sessions_async()
             else:
@@ -1060,7 +1061,7 @@ CHECK_PAYMENT_KEYBOARD = {
     ]
 }
 
-def deliver_accounts(chat_id, user_id, session, payment_data=None):
+def deliver_accounts(chat_id, user_id, session, payment_data=None, user_name=''):
     """Deliver purchased accounts to user after confirmed payment."""
     account_type = session['account_type']
     quantity = session['quantity']
@@ -1119,12 +1120,13 @@ def deliver_accounts(chat_id, user_id, session, payment_data=None):
         memo = pd.get('memo') or 'គ្មាន'
         ref = pd.get('externalRef') or pd.get('transactionId') or pd.get('md5') or 'N/A'
         amount = session.get('total_price', 0)
+        buyer_label = f"{user_name} ({user_id})" if user_name else str(user_id)
         admin_msg = (
             "🎉 <b>ទទួលបានការបង់ប្រាក់ជោគជ័យ</b>\n"
             "━━━━━━━━━━━━━━━━━━━\n"
-            f"🆔 <b>អ្នកទិញ (ID):</b> <code>{user_id}</code>\n"
+            f"🆔 <b>ឈ្មោះអ្នកទិញ(ID):</b> {buyer_label}\n"
             f"💵 <b>ទឹកប្រាក់:</b> {amount} USD\n"
-            f"👤 <b>ពីគណនី:</b> <code>{from_account}</code>\n"
+            f"👤 <b>ពីធនាគារ:</b> <code>{from_account}</code>\n"
             f"📝 <b>ចំណាំ:</b> {memo}\n"
             f"🧾 <b>លេខយោង:</b> <code>{ref}</code>\n"
             f"⏰ <b>ម៉ោង:</b> {now_str}"
