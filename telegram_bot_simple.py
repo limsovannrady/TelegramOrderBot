@@ -280,8 +280,13 @@ def _init_db():
                 account_type TEXT,
                 quantity INT,
                 total_price NUMERIC,
+                accounts JSONB DEFAULT '[]',
                 purchased_at TIMESTAMPTZ DEFAULT NOW()
             )
+        """)
+        _neon_query("""
+            ALTER TABLE bot_purchase_history
+            ADD COLUMN IF NOT EXISTS accounts JSONB DEFAULT '[]'
         """)
         r = _neon_query("SELECT COUNT(*) as cnt FROM bot_accounts")
         if int(r['rows'][0]['cnt']) == 0:
@@ -415,12 +420,13 @@ def delete_pending_payment(user_id):
     except Exception as e:
         logger.error(f"Failed to delete pending payment: {e}")
 
-def save_purchase_history(user_id, account_type, quantity, total_price):
+def save_purchase_history(user_id, account_type, quantity, total_price, accounts=None):
     """Save a completed purchase to history."""
     try:
+        accounts_json = json.dumps(accounts or [], ensure_ascii=False)
         _neon_query(
-            "INSERT INTO bot_purchase_history (user_id, account_type, quantity, total_price) VALUES ($1, $2, $3, $4)",
-            [str(user_id), account_type, str(quantity), str(total_price)]
+            "INSERT INTO bot_purchase_history (user_id, account_type, quantity, total_price, accounts) VALUES ($1, $2, $3, $4, $5)",
+            [str(user_id), account_type, str(quantity), str(total_price), accounts_json]
         )
     except Exception as e:
         logger.error(f"Failed to save purchase history: {e}")
@@ -429,7 +435,7 @@ def get_purchase_history(user_id, limit=10):
     """Get last N purchases for a user."""
     try:
         r = _neon_query(
-            "SELECT account_type, quantity, total_price, purchased_at FROM bot_purchase_history WHERE user_id = $1 ORDER BY purchased_at DESC LIMIT $2",
+            "SELECT account_type, quantity, total_price, accounts, purchased_at FROM bot_purchase_history WHERE user_id = $1 ORDER BY purchased_at DESC LIMIT $2",
             [str(user_id), str(limit)]
         )
         return r.get('rows', [])
@@ -1017,11 +1023,24 @@ def handle_message(update):
                         dt_kh = dt.astimezone(cambodia_tz).strftime("%d/%m/%Y %I:%M %p")
                     except Exception:
                         dt_kh = str(row.get('purchased_at', ''))
+                    accs = row.get('accounts') or []
+                    if isinstance(accs, str):
+                        try:
+                            accs = json.loads(accs)
+                        except Exception:
+                            accs = []
+                    acc_lines = ""
+                    for acc in accs:
+                        if 'email' in acc:
+                            acc_lines += f"   📧 {acc['email']}\n"
+                        else:
+                            acc_lines += f"   📧 {acc.get('phone', '')} | {acc.get('password', '')}\n"
                     msg += (
                         f"<blockquote>{i}. 🔹 ប្រភេទ: {row.get('account_type', 'N/A')}\n"
                         f"   🔹 ចំនួន: {row.get('quantity', 0)}\n"
                         f"   🔹 តម្លៃ: {row.get('total_price', 0)}$\n"
-                        f"   🕐 ម៉ោង: {dt_kh}</blockquote>\n"
+                        f"   🕐 ម៉ោង: {dt_kh}\n"
+                        f"{acc_lines}</blockquote>\n"
                     )
                 send_message(chat_id, msg, parse_mode="HTML", reply_to_message_id=False)
             return
@@ -1328,7 +1347,7 @@ def deliver_accounts(chat_id, user_id, session, payment_data=None, user_name='')
         return
 
     save_data()
-    save_purchase_history(user_id, account_type, quantity, session.get('total_price', 0))
+    save_purchase_history(user_id, account_type, quantity, session.get('total_price', 0), delivered_accounts)
 
     accounts_message = f'<tg-emoji emoji-id="5436040291507247633">🎉</tg-emoji> <b>ការទិញបានបញ្ជាក់ដោយជោគជ័យ</b>\n\n'
     accounts_message += f"<blockquote>🔹 ប្រភេទ: {account_type}\n"
