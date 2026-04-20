@@ -799,7 +799,9 @@ def handle_callback_query(update):
                 md5_hash = md5_or_err
                 session['md5_hash'] = md5_hash
                 session['qr_sent_at'] = time.time()
-                send_photo_bytes(chat_id, img_bytes, reply_markup=MAIN_REPLY_KEYBOARD)
+                photo_resp = send_photo_bytes(chat_id, img_bytes, reply_markup=MAIN_REPLY_KEYBOARD)
+                if photo_resp and photo_resp.get('result'):
+                    session['photo_message_id'] = photo_resp['result']['message_id']
                 pay_msg = send_message(chat_id, "💳 សូមបង់ប្រាក់", reply_to_message_id=False, reply_markup=CHECK_PAYMENT_KEYBOARD)
                 if pay_msg and pay_msg.get('result'):
                     session['qr_message_id'] = pay_msg['result']['message_id']
@@ -937,6 +939,9 @@ def handle_callback_query(update):
         elif callback_data == 'cancel_purchase':
             answer_callback(callback_query['id'])
             session = user_sessions.get(user_id)
+            photo_message_id = session.get('photo_message_id') if session else None
+            if photo_message_id:
+                delete_message_async(chat_id, photo_message_id)
             qr_message_id = session.get('qr_message_id') if session else None
             if qr_message_id:
                 delete_message_async(chat_id, qr_message_id)
@@ -1107,7 +1112,9 @@ def handle_message(update):
                         md5_hash = md5_or_err
                         session['md5_hash'] = md5_hash
                         session['qr_sent_at'] = time.time()
-                        send_photo_bytes(chat_id, img_bytes, reply_markup=MAIN_REPLY_KEYBOARD)
+                        photo_resp = send_photo_bytes(chat_id, img_bytes, reply_markup=MAIN_REPLY_KEYBOARD)
+                        if photo_resp and photo_resp.get('result'):
+                            session['photo_message_id'] = photo_resp['result']['message_id']
                         pay_msg = send_message(chat_id, "💳 សូមបង់ប្រាក់", reply_to_message_id=False, reply_markup=CHECK_PAYMENT_KEYBOARD)
                         if pay_msg and pay_msg.get('result'):
                             session['qr_message_id'] = pay_msg['result']['message_id']
