@@ -988,7 +988,6 @@ def handle_message(update):
                 send_start_banner(chat_id, caption=welcome_caption, parse_mode='HTML', message_effect_id='5046509860389126442', reply_markup=MAIN_REPLY_KEYBOARD)
             except Exception as e:
                 logger.error(f"Failed to send banner image: {e}")
-            show_account_selection_local()
             return
 
         if text.strip() == '💵 ទិញគូប៉ុង':
