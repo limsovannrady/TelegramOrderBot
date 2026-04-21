@@ -600,7 +600,6 @@ def backfill_known_user_profiles():
     except Exception as e:
         logger.error(f"backfill_known_user_profiles error: {e}")
 
-_run_background("backfill_known_user_profiles", backfill_known_user_profiles)
 
 def notify_admin_new_user(user):
     """Send a 'new user' notification to the admin once per cold start per user."""
@@ -1525,6 +1524,12 @@ def handle_message(update):
         if user_id == ADMIN_ID:
             # Handle /users command — list all users who have used the bot
             if text.strip() == '/users':
+                # Fetch missing profiles inline (works on serverless like Vercel
+                # where background threads don't persist between requests).
+                try:
+                    backfill_known_user_profiles()
+                except Exception as e:
+                    logger.error(f"Inline backfill failed: {e}")
                 try:
                     r = _neon_query(
                         "SELECT user_id, first_name, last_name, username, first_seen "
