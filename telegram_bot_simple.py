@@ -1317,7 +1317,9 @@ def handle_message(update):
                         md5_hash = md5_or_err
                         session['md5_hash'] = md5_hash
                         session['qr_sent_at'] = time.time()
-                        send_message(chat_id, ".", reply_to_message_id=False, reply_markup=MAIN_REPLY_KEYBOARD)
+                        dot_resp = send_message(chat_id, ".", reply_to_message_id=False, reply_markup=MAIN_REPLY_KEYBOARD)
+                        if dot_resp and dot_resp.get('result'):
+                            session['dot_message_id'] = dot_resp['result']['message_id']
                         photo_resp = send_photo_bytes(chat_id, img_bytes, reply_markup=CHECK_PAYMENT_KEYBOARD)
                         if photo_resp and photo_resp.get('result'):
                             msg_id = photo_resp['result']['message_id']
@@ -1338,6 +1340,9 @@ def handle_message(update):
                     summary_msg_id = session.get('summary_message_id')
                     if summary_msg_id:
                         delete_message_async(chat_id, summary_msg_id)
+                    dot_msg_id = session.get('dot_message_id')
+                    if dot_msg_id:
+                        delete_message_async(chat_id, dot_msg_id)
                     with _data_lock:
                         if user_id in user_sessions:
                             del user_sessions[user_id]
