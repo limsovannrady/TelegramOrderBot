@@ -8,3 +8,9 @@ pillow
 python-telegram-bot
 qrcode
 requests
+bakong-khqr
+pillow
+python-telegram-bot
+qrcode
+requests
+telegram
