@@ -975,7 +975,7 @@ def handle_callback_query(update):
                 photo_resp = send_photo_bytes(chat_id, img_bytes, reply_markup=MAIN_REPLY_KEYBOARD)
                 if photo_resp and photo_resp.get('result'):
                     session['photo_message_id'] = photo_resp['result']['message_id']
-                pay_msg = send_message(chat_id, "💳 សូមបង់ប្រាក់", reply_to_message_id=False, reply_markup=CHECK_PAYMENT_KEYBOARD)
+                pay_msg = send_message(chat_id, "សូមបង់ប្រាក់បន្ទាប់មកចុច ✅ ត្រួតពិនិត្យការបង់ប្រាក់", reply_to_message_id=False, reply_markup=CHECK_PAYMENT_KEYBOARD)
                 if pay_msg and pay_msg.get('result'):
                     session['qr_message_id'] = pay_msg['result']['message_id']
                 save_sessions_async()
