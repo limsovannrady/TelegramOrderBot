@@ -480,12 +480,24 @@ def get_purchase_history(user_id, limit=10):
     return []
 
 def find_buyer_by_email(email):
+    """Find the most recent buyer of a given email account from ALL purchase history (no limit)."""
     try:
+        # Use JSONB containment to do an exact email match at the database level
         r = _neon_query(
-            "SELECT user_id, accounts FROM bot_purchase_history WHERE accounts::text ILIKE $1 ORDER BY purchased_at DESC LIMIT 20",
+            "SELECT user_id FROM bot_purchase_history "
+            "WHERE accounts @> $1::jsonb "
+            "ORDER BY purchased_at DESC LIMIT 1",
+            [json.dumps([{"email": email}])]
+        )
+        if r.get('rows'):
+            return int(r['rows'][0]['user_id'])
+        # Fallback: text search across all rows (handles older rows stored as plain strings)
+        r2 = _neon_query(
+            "SELECT user_id, accounts FROM bot_purchase_history "
+            "WHERE accounts::text ILIKE $1 ORDER BY purchased_at DESC",
             [f"%{email}%"]
         )
-        for row in r.get('rows', []):
+        for row in r2.get('rows', []):
             accounts = row.get('accounts') or []
             if isinstance(accounts, str):
                 try:
