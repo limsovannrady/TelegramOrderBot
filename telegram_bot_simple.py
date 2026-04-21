@@ -913,7 +913,7 @@ def handle_callback_query(update):
                         'resize_keyboard': True,
                     }
 
-                    send_message(chat_id, reply_message, parse_mode="Markdown", reply_markup=qty_keyboard)
+                    send_message(chat_id, reply_message, reply_to_message_id=False, parse_mode="Markdown", reply_markup=qty_keyboard)
                     
                     # Delete the original message with inline buttons
                     delete_message_async(chat_id, callback_query['message']['message_id'])
@@ -1202,7 +1202,7 @@ def handle_message(update):
                     qty_buttons = [{'text': str(n)} for n in range(1, count + 1)]
                     qty_rows = [qty_buttons[i:i+5] for i in range(0, len(qty_buttons), 5)]
                     qty_keyboard = {'keyboard': qty_rows, 'resize_keyboard': True}
-                    send_message(chat_id, reply_message, parse_mode="Markdown", reply_markup=qty_keyboard)
+                    send_message(chat_id, reply_message, reply_to_message_id=False, parse_mode="Markdown", reply_markup=qty_keyboard)
                     logger.info(f"User {user_id} selected account type '{account_type}' via reply keyboard")
                 else:
                     send_message(chat_id, f"សូមអភ័យទោស Account {account_type} អស់ពីស្តុក 🪤", reply_markup=MAIN_REPLY_KEYBOARD)
