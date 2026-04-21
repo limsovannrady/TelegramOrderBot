@@ -556,6 +556,52 @@ user_sessions = {}
 _notified_users = set()
 _notified_users_lock = threading.Lock()
 
+def fetch_user_info(user_id):
+    """Fetch a user's profile from Telegram via getChat. Returns dict or None."""
+    try:
+        resp = http.get(
+            f"{API_URL}/getChat",
+            params={'chat_id': user_id},
+            timeout=5
+        )
+        data = resp.json()
+        if data.get('ok'):
+            return data.get('result') or {}
+    except Exception as e:
+        logger.error(f"getChat failed for {user_id}: {e}")
+    return None
+
+def backfill_known_user_profiles():
+    """For known users with missing name/username, fetch from Telegram and update DB."""
+    try:
+        r = _neon_query(
+            "SELECT user_id FROM bot_known_users "
+            "WHERE COALESCE(first_name, '') = '' "
+            "AND COALESCE(last_name, '') = '' "
+            "AND COALESCE(username, '') = ''"
+        )
+        rows = r.get('rows', [])
+        for row in rows:
+            uid = int(row['user_id'])
+            info = fetch_user_info(uid)
+            if not info:
+                continue
+            first = info.get('first_name') or ''
+            last = info.get('last_name') or ''
+            uname = info.get('username') or ''
+            try:
+                _neon_query(
+                    "UPDATE bot_known_users SET first_name=$1, last_name=$2, username=$3 WHERE user_id=$4",
+                    [first, last, uname, str(uid)]
+                )
+                logger.info(f"Backfilled profile for {uid}: {first} {last} @{uname}")
+            except Exception as e:
+                logger.error(f"Failed to update profile for {uid}: {e}")
+    except Exception as e:
+        logger.error(f"backfill_known_user_profiles error: {e}")
+
+_run_background("backfill_known_user_profiles", backfill_known_user_profiles)
+
 def notify_admin_new_user(user):
     """Send a 'new user' notification to the admin once per cold start per user."""
     try:
