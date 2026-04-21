@@ -900,9 +900,7 @@ def handle_callback_query(update):
                     save_sessions_async()
                     
                     # Create regular message without reply quote
-                    reply_message = f"មាន {count} នៅក្នុងស្តុក\n"
-                    reply_message += f"តម្លៃ ${price} ក្នុងមួយ Account\n\n"
-                    reply_message += "*សូមជ្រើសរើសចំនួនដែលចង់ទិញ៖*"
+                    reply_message = "*សូមជ្រើសរើសចំនួនដែលចង់ទិញ៖*"
 
                     # Build reply keyboard with all available quantities
                     qty_buttons = [{'text': str(n)} for n in range(1, count + 1)]
@@ -1198,7 +1196,7 @@ def handle_message(update):
                             'available_count': count
                         }
                     save_sessions_async()
-                    reply_message = f"មាន {count} នៅក្នុងស្តុក\nតម្លៃ ${price} ក្នុងមួយ Account\n\n*សូមជ្រើសរើសចំនួនដែលចង់ទិញ៖*"
+                    reply_message = "*សូមជ្រើសរើសចំនួនដែលចង់ទិញ៖*"
                     qty_buttons = [{'text': str(n)} for n in range(1, count + 1)]
                     qty_rows = [qty_buttons[i:i+5] for i in range(0, len(qty_buttons), 5)]
                     qty_keyboard = {'keyboard': qty_rows, 'resize_keyboard': True}
