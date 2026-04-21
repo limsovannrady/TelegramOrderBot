@@ -1308,6 +1308,7 @@ def handle_message(update):
                 if text.strip() == '✅ បញ្ជាក់ការទិញ':
                     with _data_lock:
                         session['state'] = 'payment_pending'
+                    send_message(chat_id, "⏳ កំពុងដំណើរការ...", reply_to_message_id=False, reply_markup=MAIN_REPLY_KEYBOARD)
                     summary_msg_id = session.get('summary_message_id')
                     if summary_msg_id:
                         delete_message_async(chat_id, summary_msg_id)
@@ -1328,7 +1329,7 @@ def handle_message(update):
                         photo_resp = send_photo_bytes(chat_id, img_bytes, reply_markup=MAIN_REPLY_KEYBOARD)
                         if photo_resp and photo_resp.get('result'):
                             session['photo_message_id'] = photo_resp['result']['message_id']
-                        pay_msg = send_message(chat_id, "💳 សូមបង់ប្រាក់", reply_to_message_id=False, reply_markup=CHECK_PAYMENT_KEYBOARD)
+                        pay_msg = send_message(chat_id, "សូមបង់ប្រាក់បន្ទាប់មកចុច ✅ ត្រួតពិនិត្យការបង់ប្រាក់", reply_to_message_id=False, reply_markup=CHECK_PAYMENT_KEYBOARD)
                         if pay_msg and pay_msg.get('result'):
                             session['qr_message_id'] = pay_msg['result']['message_id']
                         save_sessions_async()
