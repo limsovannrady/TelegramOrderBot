@@ -1113,6 +1113,9 @@ def handle_callback_query(update):
             qr_message_id = session.get('qr_message_id') if session else None
             if qr_message_id:
                 delete_message_async(chat_id, qr_message_id)
+            dot_msg_id = session.get('dot_message_id') if session else None
+            if dot_msg_id:
+                delete_message_async(chat_id, dot_msg_id)
             with _data_lock:
                 if user_id in user_sessions:
                     del user_sessions[user_id]
