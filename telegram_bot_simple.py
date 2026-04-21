@@ -1303,9 +1303,6 @@ def handle_message(update):
                 if text.strip() == '✅ យល់ព្រម':
                     with _data_lock:
                         session['state'] = 'payment_pending'
-                    summary_msg_id = session.get('summary_message_id')
-                    if summary_msg_id:
-                        delete_message_async(chat_id, summary_msg_id)
                     try:
                         img_bytes, md5_or_err, qr_string = generate_payment_qr(session['total_price'])
                         if not img_bytes:
@@ -1320,9 +1317,6 @@ def handle_message(update):
                         md5_hash = md5_or_err
                         session['md5_hash'] = md5_hash
                         session['qr_sent_at'] = time.time()
-                        rm_resp = send_message(chat_id, ".", reply_to_message_id=False, reply_markup={'remove_keyboard': True})
-                        if rm_resp and rm_resp.get('result'):
-                            delete_message_async(chat_id, rm_resp['result']['message_id'])
                         photo_resp = send_photo_bytes(chat_id, img_bytes, reply_markup=CHECK_PAYMENT_KEYBOARD)
                         if photo_resp and photo_resp.get('result'):
                             msg_id = photo_resp['result']['message_id']
