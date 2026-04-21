@@ -809,7 +809,6 @@ def show_account_selection(chat_id):
     reply_keyboard = {
         'keyboard': buttons,
         'resize_keyboard': True,
-        'one_time_keyboard': True,
     }
     send_message(chat_id, "សូមជ្រើសរើស Account ដើម្បីទិញ៖",
                  reply_to_message_id=False, reply_markup=reply_keyboard)
@@ -914,7 +913,6 @@ def handle_callback_query(update):
                     qty_keyboard = {
                         'keyboard': qty_rows,
                         'resize_keyboard': True,
-                        'one_time_keyboard': True
                     }
 
                     send_message(chat_id, reply_message, parse_mode="Markdown", reply_markup=qty_keyboard)
@@ -1204,7 +1202,7 @@ def handle_message(update):
                     reply_message = f"មាន {count} នៅក្នុងស្តុក\nតម្លៃ ${price} ក្នុងមួយ Account\n\n*សូមជ្រើសរើសចំនួន Accounts ដែលចង់ទិញ៖*"
                     qty_buttons = [{'text': str(n)} for n in range(1, count + 1)]
                     qty_rows = [qty_buttons[i:i+5] for i in range(0, len(qty_buttons), 5)]
-                    qty_keyboard = {'keyboard': qty_rows, 'resize_keyboard': True, 'one_time_keyboard': True}
+                    qty_keyboard = {'keyboard': qty_rows, 'resize_keyboard': True}
                     send_message(chat_id, reply_message, parse_mode="Markdown", reply_markup=qty_keyboard)
                     logger.info(f"User {user_id} selected account type '{account_type}' via reply keyboard")
                 else:
