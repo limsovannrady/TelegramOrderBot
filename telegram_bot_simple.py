@@ -561,12 +561,8 @@ def send_message(chat_id, text, reply_to_message_id=None, parse_mode=None, reply
     if parse_mode:
         data['parse_mode'] = parse_mode
 
-    if reply_markup is False:
-        effective_markup = None
-    else:
-        effective_markup = reply_markup if reply_markup is not None else MAIN_REPLY_KEYBOARD
-    if effective_markup is not None:
-        data['reply_markup'] = json.dumps(effective_markup)
+    effective_markup = reply_markup if (reply_markup is not None and reply_markup is not False) else MAIN_REPLY_KEYBOARD
+    data['reply_markup'] = json.dumps(effective_markup)
 
     if message_effect_id:
         data['message_effect_id'] = message_effect_id
@@ -1218,8 +1214,7 @@ def handle_message(update):
                 f"👤 <b>ឈ្មោះ:</b> {full_name}\n"
                 f'<tg-emoji emoji-id="5422683699130933153">🪪</tg-emoji> <b>ID:</b> <code>{user_id}</code>'
             )
-            inline_kb = {'inline_keyboard': [[{'text': 'ព័ត៌មានបន្ថែម', 'url': 'https://t.me/limsovannrady'}]]}
-            send_message(chat_id, account_info, parse_mode="HTML", reply_markup=inline_kb)
+            send_message(chat_id, account_info, parse_mode="HTML", reply_markup=MAIN_REPLY_KEYBOARD)
             return
 
         if text.strip() == '🧾ប្រវត្តិទិញ':
