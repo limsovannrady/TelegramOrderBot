@@ -1307,12 +1307,15 @@ def handle_message(update):
                 if text.strip() == '✅ បញ្ជាក់ការទិញ':
                     with _data_lock:
                         session['state'] = 'payment_pending'
-                    send_message(chat_id, "⏳ កំពុងដំណើរការ...", reply_to_message_id=False, reply_markup=MAIN_REPLY_KEYBOARD)
+                    processing_resp = send_message(chat_id, "⏳ កំពុងដំណើរការ...", reply_to_message_id=False, reply_markup=MAIN_REPLY_KEYBOARD)
+                    processing_msg_id = processing_resp['result']['message_id'] if processing_resp and processing_resp.get('result') else None
                     summary_msg_id = session.get('summary_message_id')
                     if summary_msg_id:
                         delete_message_async(chat_id, summary_msg_id)
                     try:
                         img_bytes, md5_or_err, qr_string = generate_payment_qr(session['total_price'])
+                        if processing_msg_id:
+                            delete_message_async(chat_id, processing_msg_id)
                         if not img_bytes:
                             err_detail = md5_or_err or "មិនដឹងមូលហេតុ"
                             send_message(chat_id, "❌ *មានបញ្ហាក្នុងការបង្កើត QR Code*\n\nសូមព្យាយាមម្តងទៀត។", parse_mode="Markdown")
