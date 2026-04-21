@@ -307,6 +307,15 @@ def _init_db():
                 last_seen TIMESTAMPTZ DEFAULT NOW()
             )
         """)
+        # Backfill any historical buyers into the known-users table so /users
+        # never loses anyone on a Vercel cold restart.
+        _neon_query("""
+            INSERT INTO bot_known_users (user_id, first_seen, last_seen)
+            SELECT DISTINCT user_id, MIN(purchased_at), MAX(purchased_at)
+            FROM bot_purchase_history
+            GROUP BY user_id
+            ON CONFLICT (user_id) DO NOTHING
+        """)
         r = _neon_query("SELECT COUNT(*) as cnt FROM bot_accounts")
         if int(r['rows'][0]['cnt']) == 0:
             _neon_query("INSERT INTO bot_accounts (data) VALUES ($1)",
