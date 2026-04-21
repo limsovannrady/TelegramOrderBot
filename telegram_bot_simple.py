@@ -1175,13 +1175,6 @@ def handle_message(update):
         # Set reply-quote context for all send_message calls in this handler
         _set_reply_to_id(message_id)
 
-        if 'sticker' in message and user_id == ADMIN_ID:
-            sticker = message['sticker']
-            file_id = sticker.get('file_id', '')
-            file_unique_id = sticker.get('file_unique_id', '')
-            send_message(chat_id, f"Sticker file_id:\n<code>{file_id}</code>\n\nfile_unique_id:\n<code>{file_unique_id}</code>", parse_mode="HTML", reply_to_message_id=False)
-            return
-        
         logger.info(f"Received message from user {user.get('first_name', 'Unknown')} (ID: {user_id}): {text}")
         
         # Function to show account selection interface
