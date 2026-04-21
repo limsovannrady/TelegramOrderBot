@@ -793,7 +793,8 @@ def get_updates(offset=None):
     response.raise_for_status()
     return response.json()
 
-ACCOUNT_BTN_PREFIX = "🛒 "
+ACCOUNT_BTN_PREFIX = "ទិញ "
+ACCOUNT_BTN_SUFFIX = " - មានក្នុងស្តុក "
 
 def show_account_selection(chat_id):
     """Send the account selection as a reply keyboard to the given chat."""
@@ -801,7 +802,7 @@ def show_account_selection(chat_id):
     for account_type, accounts in accounts_data['account_types'].items():
         count = len(accounts)
         if count > 0:
-            button_text = f"{ACCOUNT_BTN_PREFIX}{account_type}"
+            button_text = f"{ACCOUNT_BTN_PREFIX}{account_type}{ACCOUNT_BTN_SUFFIX}{count}"
             buttons.append([{'text': button_text}])
     if not buttons:
         send_message(chat_id, "_សូមអភ័យទោស អស់ពីស្តុក 🪤_", parse_mode="Markdown", reply_to_message_id=False, reply_markup=MAIN_REPLY_KEYBOARD)
@@ -1185,7 +1186,8 @@ def handle_message(update):
 
         # Handle account selection reply keyboard button press
         if text.strip().startswith(ACCOUNT_BTN_PREFIX):
-            account_type = text.strip()[len(ACCOUNT_BTN_PREFIX):]
+            raw = text.strip()[len(ACCOUNT_BTN_PREFIX):]
+            account_type = raw.split(ACCOUNT_BTN_SUFFIX)[0]
             if account_type in accounts_data.get('account_types', {}):
                 with _data_lock:
                     accounts = accounts_data['account_types'][account_type]
