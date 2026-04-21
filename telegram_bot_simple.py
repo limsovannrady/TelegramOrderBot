@@ -808,8 +808,8 @@ def show_account_selection(chat_id):
         'resize_keyboard': True,
         'persistent': True,
     }
-    send_message(chat_id, "សូមជ្រើសរើស Account ដើម្បីទិញ៖",
-                 reply_to_message_id=False, reply_markup=reply_keyboard)
+    send_message(chat_id, "<b>សូមជ្រើសរើស Account ដើម្បីទិញ៖</b>",
+                 reply_to_message_id=False, reply_markup=reply_keyboard, parse_mode="HTML")
 
 
 MAIN_REPLY_KEYBOARD = {
