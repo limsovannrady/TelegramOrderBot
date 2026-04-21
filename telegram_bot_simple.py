@@ -793,19 +793,26 @@ def get_updates(offset=None):
     response.raise_for_status()
     return response.json()
 
+ACCOUNT_BTN_PREFIX = "🛒 "
+
 def show_account_selection(chat_id):
-    """Send the account selection inline keyboard to the given chat."""
-    inline_buttons = []
+    """Send the account selection as a reply keyboard to the given chat."""
+    buttons = []
     for account_type, accounts in accounts_data['account_types'].items():
         count = len(accounts)
         if count > 0:
-            button_text = f"ទិញ {_short_label(account_type)} - ស្តុក {count}"
-            inline_buttons.append([{'text': button_text, 'callback_data': f"buy:{_type_callback_id(account_type)}"}])
-    if not inline_buttons:
+            button_text = f"{ACCOUNT_BTN_PREFIX}{account_type}"
+            buttons.append([{'text': button_text}])
+    if not buttons:
         send_message(chat_id, "_សូមអភ័យទោស អស់ពីស្តុក 🪤_", parse_mode="Markdown", reply_to_message_id=False, reply_markup=MAIN_REPLY_KEYBOARD)
         return
+    reply_keyboard = {
+        'keyboard': buttons,
+        'resize_keyboard': True,
+        'one_time_keyboard': True,
+    }
     send_message(chat_id, "សូមជ្រើសរើស Account ដើម្បីទិញ៖",
-                 reply_to_message_id=False, reply_markup={'inline_keyboard': inline_buttons})
+                 reply_to_message_id=False, reply_markup=reply_keyboard)
 
 
 MAIN_REPLY_KEYBOARD = {
@@ -1175,6 +1182,36 @@ def handle_message(update):
 
         if text.strip() == '💵 ទិញគូប៉ុង':
             show_account_selection_local()
+            return
+
+        # Handle account selection reply keyboard button press
+        if text.strip().startswith(ACCOUNT_BTN_PREFIX):
+            account_type = text.strip()[len(ACCOUNT_BTN_PREFIX):]
+            if account_type in accounts_data.get('account_types', {}):
+                with _data_lock:
+                    accounts = accounts_data['account_types'][account_type]
+                    count = len(accounts)
+                    price = accounts_data['prices'].get(account_type, 0)
+                if count > 0:
+                    with _data_lock:
+                        user_sessions[user_id] = {
+                            'state': 'waiting_for_quantity',
+                            'account_type': account_type,
+                            'price': price,
+                            'available_count': count
+                        }
+                    save_sessions_async()
+                    reply_message = f"មាន {count} នៅក្នុងស្តុក\nតម្លៃ ${price} ក្នុងមួយ Account\n\n*សូមជ្រើសរើសចំនួន Accounts ដែលចង់ទិញ៖*"
+                    qty_buttons = [{'text': str(n)} for n in range(1, count + 1)]
+                    qty_rows = [qty_buttons[i:i+5] for i in range(0, len(qty_buttons), 5)]
+                    qty_keyboard = {'keyboard': qty_rows, 'resize_keyboard': True, 'one_time_keyboard': True}
+                    send_message(chat_id, reply_message, parse_mode="Markdown", reply_markup=qty_keyboard)
+                    logger.info(f"User {user_id} selected account type '{account_type}' via reply keyboard")
+                else:
+                    send_message(chat_id, f"សូមអភ័យទោស Account {account_type} អស់ពីស្តុក 🪤", reply_markup=MAIN_REPLY_KEYBOARD)
+                    show_account_selection_local()
+            else:
+                show_account_selection_local()
             return
 
         if text.strip() == '👤គណនី':
