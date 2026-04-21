@@ -531,6 +531,46 @@ _init_db()
 # User session storage for tracking conversation state
 user_sessions = {}
 
+# In-memory set of user IDs we've already notified the admin about during this
+# process lifetime. Resets on every cold start (e.g. Vercel cold restart),
+# which intentionally re-sends the notification once per user per cold start.
+_notified_users = set()
+_notified_users_lock = threading.Lock()
+
+def notify_admin_new_user(user):
+    """Send a 'new user' notification to the admin once per cold start per user."""
+    try:
+        uid = user.get('id')
+        if not uid or uid == ADMIN_ID:
+            return
+        with _notified_users_lock:
+            if uid in _notified_users:
+                return
+            _notified_users.add(uid)
+        first = user.get('first_name', '') or ''
+        last = user.get('last_name', '') or ''
+        full_name = f"{first} {last}".strip() or 'N/A'
+        username = user.get('username')
+        username_str = f"@{username}" if username else '—'
+        msg = (
+            "🆕 អ្នកប្រើប្រាស់ថ្មី!\n\n"
+            f"👤 ឈ្មោះ: {html.escape(full_name)}\n"
+            f"🔖 Username: {html.escape(username_str)}\n"
+            f"🪪 ID: <code>{uid}</code>"
+        )
+        def _send():
+            try:
+                http.post(
+                    f"{API_URL}/sendMessage",
+                    data={'chat_id': ADMIN_ID, 'text': msg, 'parse_mode': 'HTML'},
+                    timeout=5
+                )
+            except Exception as e:
+                logger.error(f"Failed to send new-user notification: {e}")
+        _run_background("notify_admin_new_user", _send)
+    except Exception as e:
+        logger.error(f"notify_admin_new_user error: {e}")
+
 # Account storage - loaded from file for persistence across restarts
 accounts_data = load_data()
 
@@ -904,6 +944,8 @@ def handle_callback_query(update):
         user_id = user.get('id')
         
         logger.info(f"Received callback from user {user.get('first_name', 'Unknown')} (ID: {user_id}): {callback_data}")
+
+        notify_admin_new_user(user)
         
         # Handle buy button clicks with reply quote functionality
         if callback_data.startswith('buy:') or callback_data.startswith('buy_'):
@@ -1192,6 +1234,8 @@ def handle_message(update):
         _set_reply_to_id(message_id)
 
         logger.info(f"Received message from user {user.get('first_name', 'Unknown')} (ID: {user_id}): {text}")
+
+        notify_admin_new_user(user)
         
         # Function to show account selection interface
         def show_account_selection_local():
