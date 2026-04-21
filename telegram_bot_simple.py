@@ -297,6 +297,16 @@ def _init_db():
             ALTER TABLE bot_purchase_history
             ADD COLUMN IF NOT EXISTS accounts JSONB DEFAULT '[]'
         """)
+        _neon_query("""
+            CREATE TABLE IF NOT EXISTS bot_known_users (
+                user_id BIGINT PRIMARY KEY,
+                first_name TEXT,
+                last_name TEXT,
+                username TEXT,
+                first_seen TIMESTAMPTZ DEFAULT NOW(),
+                last_seen TIMESTAMPTZ DEFAULT NOW()
+            )
+        """)
         r = _neon_query("SELECT COUNT(*) as cnt FROM bot_accounts")
         if int(r['rows'][0]['cnt']) == 0:
             _neon_query("INSERT INTO bot_accounts (data) VALUES ($1)",
@@ -567,6 +577,18 @@ def notify_admin_new_user(user):
                 )
             except Exception as e:
                 logger.error(f"Failed to send new-user notification: {e}")
+            try:
+                _neon_query("""
+                    INSERT INTO bot_known_users (user_id, first_name, last_name, username, first_seen, last_seen)
+                    VALUES ($1, $2, $3, $4, NOW(), NOW())
+                    ON CONFLICT (user_id) DO UPDATE SET
+                        first_name = EXCLUDED.first_name,
+                        last_name = EXCLUDED.last_name,
+                        username = EXCLUDED.username,
+                        last_seen = NOW()
+                """, [str(uid), first, last, username or ''])
+            except Exception as e:
+                logger.error(f"Failed to record known user {uid}: {e}")
         _run_background("notify_admin_new_user", _send)
     except Exception as e:
         logger.error(f"notify_admin_new_user error: {e}")
@@ -1446,6 +1468,47 @@ def handle_message(update):
         
         # Admin-only commands
         if user_id == ADMIN_ID:
+            # Handle /users command — list all users who have used the bot
+            if text.strip() == '/users':
+                try:
+                    r = _neon_query(
+                        "SELECT user_id, first_name, last_name, username, first_seen "
+                        "FROM bot_known_users ORDER BY first_seen DESC"
+                    )
+                    rows = r.get('rows', [])
+                except Exception as e:
+                    logger.error(f"Failed to load known users: {e}")
+                    rows = []
+                if not rows:
+                    send_message(chat_id, "📭 <b>មិនទាន់មានអ្នកប្រើប្រាស់ទេ។</b>",
+                                 parse_mode="HTML", reply_to_message_id=False)
+                    return
+                total = len(rows)
+                header = f"👥 <b>អ្នកប្រើប្រាស់សរុប: {total}</b>\n\n"
+                chunks = []
+                current = header
+                for i, row in enumerate(rows, 1):
+                    first = row.get('first_name') or ''
+                    last = row.get('last_name') or ''
+                    full_name = f"{first} {last}".strip() or 'N/A'
+                    uname = row.get('username') or ''
+                    uname_str = f"@{uname}" if uname else '—'
+                    uid = row.get('user_id')
+                    line = (
+                        f"<b>{i}.</b> {html.escape(full_name)}\n"
+                        f"   🔖 {html.escape(uname_str)}\n"
+                        f"   🪪 <code>{uid}</code>\n\n"
+                    )
+                    if len(current) + len(line) > 3800:
+                        chunks.append(current)
+                        current = ""
+                    current += line
+                if current:
+                    chunks.append(current)
+                for chunk in chunks:
+                    send_message(chat_id, chunk, parse_mode="HTML", reply_to_message_id=False)
+                return
+
             # Handle /delete_type command
             if text.strip() == '/delete_type':
                 types = list(accounts_data.get('account_types', {}).keys())
