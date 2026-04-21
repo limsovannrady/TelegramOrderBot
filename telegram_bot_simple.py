@@ -837,7 +837,7 @@ def _send_order_summary(chat_id, user_id, session):
         f"🔹 ប្រភេទ: {session['account_type']}\n\n"
         f"🔹 តម្លៃ: {total_price}$</blockquote>"
     )
-    resp = send_message(chat_id, summary, parse_mode="HTML", reply_markup=CONFIRM_REPLY_KEYBOARD)
+    resp = send_message(chat_id, summary, reply_to_message_id=False, parse_mode="HTML", reply_markup=CONFIRM_REPLY_KEYBOARD)
     if resp and resp.get('result'):
         with _data_lock:
             session['summary_message_id'] = resp['result']['message_id']
