@@ -45,6 +45,9 @@ _data_lock = threading.RLock()
 BAKONG_TOKEN = os.environ.get("BAKONG_TOKEN", "")
 khqr_client = KHQR(BAKONG_TOKEN)
 
+# Payment merchant name (changeable by admin via /payment <name>)
+PAYMENT_NAME = "RADY"
+
 # ── Manual KHQR builder (fallback when library generates invalid strings) ──
 def _crc16_ccitt(data: str) -> str:
     """CRC16-CCITT-FALSE: poly=0x1021, init=0xFFFF, no reflection."""
@@ -111,11 +114,11 @@ def generate_payment_qr(amount):
             try:
                 qr = khqr_client.create_qr(
                     bank_account='sovannrady@aclb',
-                    merchant_name='RADY',
+                    merchant_name=PAYMENT_NAME,
                     merchant_city='KPS',
                     amount=amount,
                     currency='USD',
-                    store_label='RADY',
+                    store_label=PAYMENT_NAME,
                     phone_number='85593330905',
                     bill_number=bill_number,
                     terminal_label='Cashier-01',
@@ -126,11 +129,11 @@ def generate_payment_qr(amount):
             except TypeError:
                 qr = khqr_client.create_qr(
                     bank_account='sovannrady@aclb',
-                    merchant_name='RADY',
+                    merchant_name=PAYMENT_NAME,
                     merchant_city='KPS',
                     amount=amount,
                     currency='USD',
-                    store_label='RADY',
+                    store_label=PAYMENT_NAME,
                     phone_number='85593330905',
                     bill_number=bill_number,
                     terminal_label='Cashier-01',
@@ -143,12 +146,12 @@ def generate_payment_qr(amount):
                 logger.warning(f"Library KHQR missing currency/amount — using manual builder")
                 qr = _build_khqr_manual(
                     bank_account='sovannrady@aclb',
-                    merchant_name='RADY',
+                    merchant_name=PAYMENT_NAME,
                     merchant_city='KPS',
                     amount=amount,
                     bill_number=bill_number,
                     phone='85593330905',
-                    store_label='RADY',
+                    store_label=PAYMENT_NAME,
                     terminal_label='Cashier-01'
                 )
                 logger.info(f"Manual KHQR built, length={len(qr)}, start={qr[:40]}")
@@ -1399,6 +1402,17 @@ def handle_message(update):
                 keyboard = {'inline_keyboard': rows}
                 send_message(chat_id, "🗑 <b>ជ្រើសរើសប្រភេទ Account ដែលចង់លុប៖</b>",
                              parse_mode="HTML", reply_to_message_id=None, reply_markup=keyboard)
+                return
+
+            # Handle /payment <name> command
+            if text.strip().startswith('/payment'):
+                global PAYMENT_NAME
+                parts = text.strip().split(maxsplit=1)
+                if len(parts) < 2 or not parts[1].strip():
+                    send_message(chat_id, f"ឈ្មោះ Payment បច្ចុប្បន្ន៖ <b>{PAYMENT_NAME}</b>\n\nប្រើ: <code>/payment ឈ្មោះ</code>", parse_mode="HTML", reply_to_message_id=False)
+                    return
+                PAYMENT_NAME = parts[1].strip()
+                send_message(chat_id, f"✅ បានប្តូរឈ្មោះ Payment ទៅជា <b>{PAYMENT_NAME}</b>", parse_mode="HTML", reply_to_message_id=False)
                 return
 
             # Handle /add_account command
