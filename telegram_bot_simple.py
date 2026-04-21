@@ -561,8 +561,11 @@ def send_message(chat_id, text, reply_to_message_id=None, parse_mode=None, reply
     if parse_mode:
         data['parse_mode'] = parse_mode
 
-    effective_markup = reply_markup if (reply_markup is not None and reply_markup is not False) else MAIN_REPLY_KEYBOARD
-    data['reply_markup'] = json.dumps(effective_markup)
+    if reply_markup == "no_keyboard":
+        pass
+    else:
+        effective_markup = reply_markup if (reply_markup is not None and reply_markup is not False) else MAIN_REPLY_KEYBOARD
+        data['reply_markup'] = json.dumps(effective_markup)
 
     if message_effect_id:
         data['message_effect_id'] = message_effect_id
@@ -1045,7 +1048,7 @@ def handle_callback_query(update):
             save_sessions_async()
             summary_message_id = callback_query['message']['message_id']
             delete_message_async(chat_id, summary_message_id)
-            send_message(chat_id, "🚫 *បានបោះបង់ការទិញ*", parse_mode="Markdown", reply_to_message_id=False, reply_markup=MAIN_REPLY_KEYBOARD)
+            send_message(chat_id, "🚫 *បានបោះបង់ការទិញ*", parse_mode="Markdown", reply_to_message_id=False, reply_markup="no_keyboard")
             return
 
         # Handle quantity number button press
@@ -1121,7 +1124,7 @@ def handle_callback_query(update):
                     del user_sessions[user_id]
             save_sessions_async()
             delete_pending_payment_async(user_id)
-            send_message(chat_id, "🚫 *បានបោះបង់ការទិញ*", parse_mode="Markdown", reply_to_message_id=False, reply_markup=MAIN_REPLY_KEYBOARD)
+            send_message(chat_id, "🚫 *បានបោះបង់ការទិញ*", parse_mode="Markdown", reply_to_message_id=False, reply_markup="no_keyboard")
 
     except Exception as e:
         logger.error(f"Error handling callback query: {e}")
@@ -1350,7 +1353,7 @@ def handle_message(update):
                         if user_id in user_sessions:
                             del user_sessions[user_id]
                     save_sessions_async()
-                    send_message(chat_id, "🚫 *បានបោះបង់ការទិញ*", parse_mode="Markdown", reply_to_message_id=False, reply_markup=MAIN_REPLY_KEYBOARD)
+                    send_message(chat_id, "🚫 *បានបោះបង់ការទិញ*", parse_mode="Markdown", reply_to_message_id=False, reply_markup="no_keyboard")
                     return
 
         # Handle non-admin users
