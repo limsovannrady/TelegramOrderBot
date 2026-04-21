@@ -1427,16 +1427,7 @@ def handle_message(update):
                 arg = parts[1].strip().lower() if len(parts) > 1 else ''
                 if arg == 'on':
                     MAINTENANCE_MODE = True
-                    buyer_ids = get_all_buyer_ids()
-                    count = 0
-                    for bid in buyer_ids:
-                        if bid != ADMIN_ID:
-                            try:
-                                send_message(bid, "🔧 <b>Bot កំពុង Update សូមរង់ចាំមួយភ្លែត...</b>", parse_mode="HTML", reply_to_message_id=False)
-                                count += 1
-                            except Exception:
-                                pass
-                    send_message(chat_id, f"✅ <b>Maintenance mode ON</b>\nបានផ្ញើជូន {count} នាក់", parse_mode="HTML", reply_to_message_id=False)
+                    send_message(chat_id, "✅ <b>Maintenance mode ON</b>", parse_mode="HTML", reply_to_message_id=False)
                 elif arg == 'off':
                     MAINTENANCE_MODE = False
                     send_message(chat_id, "✅ <b>Maintenance mode OFF</b> — Bot ដំណើរការធម្មតាហើយ", parse_mode="HTML", reply_to_message_id=False)
