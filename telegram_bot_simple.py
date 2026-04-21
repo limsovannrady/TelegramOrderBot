@@ -822,7 +822,7 @@ MAIN_REPLY_KEYBOARD = {
 }
 
 CONFIRM_REPLY_KEYBOARD = {
-    'keyboard': [[{'text': '❌ បោះបង់'}, {'text': '✅ បញ្ជាក់ការទិញ'}]],
+    'keyboard': [[{'text': '🚫 បោះបង់'}, {'text': '✅ យល់ព្រម'}]],
     'resize_keyboard': True,
     'one_time_keyboard': True
 }
@@ -998,7 +998,7 @@ def handle_callback_query(update):
             confirm_cb = f"dtc:{_type_callback_id(type_name)}"
             keyboard = {'inline_keyboard': [[
                 {'text': '✅ បញ្ជាក់លុប', 'callback_data': confirm_cb},
-                {'text': '❌ បោះបង់', 'callback_data': 'dtcancel'}
+                {'text': '🚫 បោះបង់', 'callback_data': 'dtcancel'}
             ]]}
             send_message(chat_id,
                 f"⚠️ <b>តើអ្នកពិតជាចង់លុបប្រភេទ Account នេះមែនទេ?</b>\n\n"
@@ -1300,7 +1300,7 @@ def handle_message(update):
 
             # Handle confirm/cancel reply keyboard buttons
             elif session['state'] == 'waiting_for_confirmation':
-                if text.strip() == '✅ បញ្ជាក់ការទិញ':
+                if text.strip() == '✅ យល់ព្រម':
                     with _data_lock:
                         session['state'] = 'payment_pending'
                     summary_msg_id = session.get('summary_message_id')
@@ -1339,7 +1339,7 @@ def handle_message(update):
                         save_sessions_async()
                     return
 
-                elif text.strip() == '❌ បោះបង់':
+                elif text.strip() == '🚫 បោះបង់':
                     summary_msg_id = session.get('summary_message_id')
                     if summary_msg_id:
                         delete_message_async(chat_id, summary_msg_id)
