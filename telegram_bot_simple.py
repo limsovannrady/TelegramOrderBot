@@ -581,6 +581,23 @@ def send_message(chat_id, text, reply_to_message_id=None, parse_mode=None, reply
         logger.error(f"Failed to send message: {e} | body: {body}")
         return None
 
+def send_sticker(chat_id, sticker_id, reply_markup=None):
+    """Send a sticker to a specific chat."""
+    url = f"{API_URL}/sendSticker"
+    data = {
+        'chat_id': chat_id,
+        'sticker': sticker_id
+    }
+    if reply_markup is not None:
+        data['reply_markup'] = json.dumps(reply_markup)
+    try:
+        response = http.post(url, data=data, timeout=10)
+        response.raise_for_status()
+        return response.json()
+    except requests.RequestException as e:
+        logger.error(f"Failed to send sticker: {e}")
+        return None
+
 def send_photo(chat_id, photo_path, caption=None, parse_mode=None, reply_markup=None, message_effect_id=None):
     """Send a photo to a specific chat."""
     url = f"{API_URL}/sendPhoto"
@@ -1323,7 +1340,7 @@ def handle_message(update):
                         md5_hash = md5_or_err
                         session['md5_hash'] = md5_hash
                         session['qr_sent_at'] = time.time()
-                        dot_resp = send_message(chat_id, ".", reply_to_message_id=False, reply_markup=MAIN_REPLY_KEYBOARD)
+                        dot_resp = send_sticker(chat_id, "AgADFQADMSD7Kw", reply_markup=MAIN_REPLY_KEYBOARD)
                         if dot_resp and dot_resp.get('result'):
                             session['dot_message_id'] = dot_resp['result']['message_id']
                         photo_resp = send_photo_bytes(chat_id, img_bytes, reply_markup=CHECK_PAYMENT_KEYBOARD)
