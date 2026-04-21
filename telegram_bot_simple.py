@@ -968,7 +968,7 @@ def handle_callback_query(update):
                 md5_hash = md5_or_err
                 session['md5_hash'] = md5_hash
                 session['qr_sent_at'] = time.time()
-                photo_resp = send_photo_bytes(chat_id, img_bytes, reply_markup=CHECK_PAYMENT_KEYBOARD)
+                photo_resp = send_photo_bytes(chat_id, img_bytes, reply_markup={'remove_keyboard': True})
                 if photo_resp and photo_resp.get('result'):
                     msg_id = photo_resp['result']['message_id']
                     session['photo_message_id'] = msg_id
@@ -1302,7 +1302,6 @@ def handle_message(update):
                 if text.strip() == '✅ បញ្ជាក់ការទិញ':
                     with _data_lock:
                         session['state'] = 'payment_pending'
-                    send_message(chat_id, "⏳ កំពុងដំណើរការ...", reply_to_message_id=False, reply_markup=MAIN_REPLY_KEYBOARD)
                     summary_msg_id = session.get('summary_message_id')
                     if summary_msg_id:
                         delete_message_async(chat_id, summary_msg_id)
@@ -1320,7 +1319,7 @@ def handle_message(update):
                         md5_hash = md5_or_err
                         session['md5_hash'] = md5_hash
                         session['qr_sent_at'] = time.time()
-                        photo_resp = send_photo_bytes(chat_id, img_bytes, reply_markup=CHECK_PAYMENT_KEYBOARD)
+                        photo_resp = send_photo_bytes(chat_id, img_bytes, reply_markup={'remove_keyboard': True})
                         if photo_resp and photo_resp.get('result'):
                             msg_id = photo_resp['result']['message_id']
                             session['photo_message_id'] = msg_id
