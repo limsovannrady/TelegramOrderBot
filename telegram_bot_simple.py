@@ -1347,7 +1347,7 @@ def handle_message(update):
                         md5_hash = md5_or_err
                         session['md5_hash'] = md5_hash
                         session['qr_sent_at'] = time.time()
-                        dot_resp = send_sticker(chat_id, "AgADFQADMSD7Kw", reply_markup=MAIN_REPLY_KEYBOARD)
+                        dot_resp = send_sticker(chat_id, "CAACAgUAAxkBAAILvGnnaWwK-AXFeING4WOtIIKmoFYqAAIVAAMxIPsrpHGBfRB524Y7BA", reply_markup=MAIN_REPLY_KEYBOARD)
                         if dot_resp and dot_resp.get('result'):
                             session['dot_message_id'] = dot_resp['result']['message_id']
                         photo_resp = send_photo_bytes(chat_id, img_bytes, reply_markup=CHECK_PAYMENT_KEYBOARD)
