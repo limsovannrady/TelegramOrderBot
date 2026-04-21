@@ -48,6 +48,9 @@ khqr_client = KHQR(BAKONG_TOKEN)
 # Payment merchant name (changeable by admin via /payment <name>)
 PAYMENT_NAME = "RADY"
 
+# Maintenance mode flag (admin /update on | /update off)
+MAINTENANCE_MODE = False
+
 # ── Manual KHQR builder (fallback when library generates invalid strings) ──
 def _crc16_ccitt(data: str) -> str:
     """CRC16-CCITT-FALSE: poly=0x1021, init=0xFFFF, no reflection."""
@@ -480,6 +483,15 @@ def get_purchase_history(user_id, limit=10):
         return r.get('rows', [])
     except Exception as e:
         logger.error(f"Failed to get purchase history: {e}")
+    return []
+
+def get_all_buyer_ids():
+    """Get all distinct user IDs from purchase history."""
+    try:
+        r = _neon_query("SELECT DISTINCT user_id FROM bot_purchase_history")
+        return [int(row['user_id']) for row in r.get('rows', [])]
+    except Exception as e:
+        logger.error(f"Failed to get buyer IDs: {e}")
     return []
 
 def find_buyer_by_email(email):
@@ -1151,6 +1163,7 @@ def handle_callback_query(update):
 
 def handle_message(update):
     """Handle incoming message."""
+    global MAINTENANCE_MODE, PAYMENT_NAME
     try:
         # Handle callback queries first
         if 'callback_query' in update:
@@ -1183,6 +1196,10 @@ def handle_message(update):
         # Function to show account selection interface
         def show_account_selection_local():
             show_account_selection(chat_id)
+
+        if MAINTENANCE_MODE and user_id != ADMIN_ID:
+            send_message(chat_id, "🔧 <b>Bot កំពុង Update សូមរង់ចាំមួយភ្លែត...</b>", parse_mode="HTML", reply_to_message_id=False)
+            return
 
         if text.strip() == '/start':
             logger.info(f"User {user_id} triggered account selection interface")
@@ -1404,9 +1421,32 @@ def handle_message(update):
                              parse_mode="HTML", reply_to_message_id=None, reply_markup=keyboard)
                 return
 
+            # Handle /update on|off command
+            if text.strip().startswith('/update'):
+                parts = text.strip().split(maxsplit=1)
+                arg = parts[1].strip().lower() if len(parts) > 1 else ''
+                if arg == 'on':
+                    MAINTENANCE_MODE = True
+                    buyer_ids = get_all_buyer_ids()
+                    count = 0
+                    for bid in buyer_ids:
+                        if bid != ADMIN_ID:
+                            try:
+                                send_message(bid, "🔧 <b>Bot កំពុង Update សូមរង់ចាំមួយភ្លែត...</b>", parse_mode="HTML", reply_to_message_id=False)
+                                count += 1
+                            except Exception:
+                                pass
+                    send_message(chat_id, f"✅ <b>Maintenance mode ON</b>\nបានផ្ញើជូន {count} នាក់", parse_mode="HTML", reply_to_message_id=False)
+                elif arg == 'off':
+                    MAINTENANCE_MODE = False
+                    send_message(chat_id, "✅ <b>Maintenance mode OFF</b> — Bot ដំណើរការធម្មតាហើយ", parse_mode="HTML", reply_to_message_id=False)
+                else:
+                    status = "🔴 ON" if MAINTENANCE_MODE else "🟢 OFF"
+                    send_message(chat_id, f"Maintenance mode: <b>{status}</b>\n\nប្រើ: <code>/update on</code> ឬ <code>/update off</code>", parse_mode="HTML", reply_to_message_id=False)
+                return
+
             # Handle /payment <name> command
             if text.strip().startswith('/payment'):
-                global PAYMENT_NAME
                 parts = text.strip().split(maxsplit=1)
                 if len(parts) < 2 or not parts[1].strip():
                     send_message(chat_id, f"ឈ្មោះ Payment បច្ចុប្បន្ន៖ <b>{PAYMENT_NAME}</b>\n\nប្រើ: <code>/payment ឈ្មោះ</code>", parse_mode="HTML", reply_to_message_id=False)
