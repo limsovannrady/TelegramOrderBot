@@ -972,12 +972,11 @@ def handle_callback_query(update):
                 md5_hash = md5_or_err
                 session['md5_hash'] = md5_hash
                 session['qr_sent_at'] = time.time()
-                photo_resp = send_photo_bytes(chat_id, img_bytes, reply_markup=MAIN_REPLY_KEYBOARD)
+                photo_resp = send_photo_bytes(chat_id, img_bytes, reply_markup=CHECK_PAYMENT_KEYBOARD)
                 if photo_resp and photo_resp.get('result'):
-                    session['photo_message_id'] = photo_resp['result']['message_id']
-                pay_msg = send_message(chat_id, "សូមបង់ប្រាក់បន្ទាប់មកចុច ✅ ត្រួតពិនិត្យការបង់ប្រាក់", reply_to_message_id=False, reply_markup=CHECK_PAYMENT_KEYBOARD)
-                if pay_msg and pay_msg.get('result'):
-                    session['qr_message_id'] = pay_msg['result']['message_id']
+                    msg_id = photo_resp['result']['message_id']
+                    session['photo_message_id'] = msg_id
+                    session['qr_message_id'] = msg_id
                 save_sessions_async()
                 save_pending_payment_async(user_id, chat_id, session)
                 logger.info(f"Generated QR for user {user_id}: Amount ${session['total_price']}, MD5: {md5_hash}")
@@ -1326,12 +1325,11 @@ def handle_message(update):
                         md5_hash = md5_or_err
                         session['md5_hash'] = md5_hash
                         session['qr_sent_at'] = time.time()
-                        photo_resp = send_photo_bytes(chat_id, img_bytes, reply_markup=MAIN_REPLY_KEYBOARD)
+                        photo_resp = send_photo_bytes(chat_id, img_bytes, reply_markup=CHECK_PAYMENT_KEYBOARD)
                         if photo_resp and photo_resp.get('result'):
-                            session['photo_message_id'] = photo_resp['result']['message_id']
-                        pay_msg = send_message(chat_id, "សូមបង់ប្រាក់បន្ទាប់មកចុច ✅ ត្រួតពិនិត្យការបង់ប្រាក់", reply_to_message_id=False, reply_markup=CHECK_PAYMENT_KEYBOARD)
-                        if pay_msg and pay_msg.get('result'):
-                            session['qr_message_id'] = pay_msg['result']['message_id']
+                            msg_id = photo_resp['result']['message_id']
+                            session['photo_message_id'] = msg_id
+                            session['qr_message_id'] = msg_id
                         save_sessions_async()
                         save_pending_payment_async(user_id, chat_id, session)
                     except Exception as e:
