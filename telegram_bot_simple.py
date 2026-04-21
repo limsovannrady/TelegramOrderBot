@@ -1317,6 +1317,9 @@ def handle_message(update):
                         md5_hash = md5_or_err
                         session['md5_hash'] = md5_hash
                         session['qr_sent_at'] = time.time()
+                        rm_resp = send_message(chat_id, "\u200b", reply_to_message_id=False, reply_markup={'remove_keyboard': True})
+                        if rm_resp and rm_resp.get('result'):
+                            delete_message_async(chat_id, rm_resp['result']['message_id'])
                         photo_resp = send_photo_bytes(chat_id, img_bytes, reply_markup=CHECK_PAYMENT_KEYBOARD)
                         if photo_resp and photo_resp.get('result'):
                             msg_id = photo_resp['result']['message_id']
