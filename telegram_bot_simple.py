@@ -13,9 +13,6 @@ import hashlib
 import fcntl
 import re
 import html
-import psycopg2
-import psycopg2.extras
-import psycopg2.pool
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timezone
 from urllib.parse import urlparse
@@ -253,42 +250,23 @@ def check_payment_status(md5):
         logger.error(f"Failed to check payment status: {type(e).__name__}: {e}")
     return False, None
 
-DATABASE_URL = os.environ.get("NEON_DATABASE_URL", "") or os.environ.get("DATABASE_URL", "")
-
-_db_pool = psycopg2.pool.ThreadedConnectionPool(1, 10, DATABASE_URL)
+NEON_DATABASE_URL = os.environ.get("NEON_DATABASE_URL", "")
+_neon_host = urlparse(NEON_DATABASE_URL).hostname if NEON_DATABASE_URL else ""
+_neon_api_url = f"https://{_neon_host}/sql"
+_neon_headers = {
+    'Neon-Connection-String': NEON_DATABASE_URL,
+    'Content-Type': 'application/json',
+    'Accept': 'application/json'
+}
 
 def _neon_query(query, params=None):
-    """Execute a SQL query using a pooled PostgreSQL connection, returning Neon-style dict."""
-    pg_query = re.sub(r'\$(\d+)', '%s', query)
-    pg_params = tuple(params) if params else ()
-    for attempt in range(2):
-        conn = _db_pool.getconn()
-        try:
-            with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
-                cur.execute(pg_query, pg_params)
-                conn.commit()
-                try:
-                    rows = [dict(r) for r in cur.fetchall()]
-                except psycopg2.ProgrammingError:
-                    rows = []
-            _db_pool.putconn(conn)
-            return {'rows': rows}
-        except (psycopg2.OperationalError, psycopg2.InterfaceError):
-            # Stale connection — discard it and retry once with a fresh one
-            try:
-                _db_pool.putconn(conn, close=True)
-            except Exception:
-                pass
-            if attempt == 1:
-                raise
-        except Exception:
-            try:
-                conn.rollback()
-                _db_pool.putconn(conn)
-            except Exception:
-                pass
-            raise
-    return {'rows': []}
+    """Execute a SQL query via Neon HTTP API. Works on any platform (Vercel, Replit, etc.)"""
+    body = {'query': query}
+    if params:
+        body['params'] = [str(p) if p is not None else None for p in params]
+    resp = http.post(_neon_api_url, headers=_neon_headers, json=body, timeout=15)
+    resp.raise_for_status()
+    return resp.json()
 
 def _init_db():
     """Create tables if they don't exist."""
