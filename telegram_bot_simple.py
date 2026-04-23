@@ -31,6 +31,18 @@ logger = logging.getLogger(__name__)
 BOT_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN", "")
 KHMER_MESSAGE = "ជ្រើសរើស Account ដើម្បីបញ្ជាទិញ"
 ADMIN_ID = 5002402843
+
+# Additional admin user IDs (loaded from Neon at startup, managed via /admin).
+# ADMIN_ID is always implicitly an admin and is the destination for notifications.
+EXTRA_ADMIN_IDS = set()
+
+def is_admin(uid):
+    """Return True if uid is the primary admin or in the extra-admin set."""
+    try:
+        uid_int = int(uid)
+    except (TypeError, ValueError):
+        return False
+    return uid_int == ADMIN_ID or uid_int in EXTRA_ADMIN_IDS
 CHANNEL_ID = os.environ.get("TELEGRAM_CHANNEL_ID", "").strip()
 API_URL = f"https://api.telegram.org/bot{BOT_TOKEN}"
 
@@ -649,6 +661,13 @@ _saved_maintenance = get_setting('MAINTENANCE_MODE')
 if _saved_maintenance is not None:
     MAINTENANCE_MODE = (str(_saved_maintenance).lower() == 'true')
     logger.info(f"Loaded MAINTENANCE_MODE from DB: {MAINTENANCE_MODE}")
+_saved_extra_admins = get_setting('EXTRA_ADMIN_IDS')
+if _saved_extra_admins:
+    try:
+        EXTRA_ADMIN_IDS = set(int(x) for x in json.loads(_saved_extra_admins))
+        logger.info(f"Loaded {len(EXTRA_ADMIN_IDS)} extra admin(s) from DB")
+    except Exception as e:
+        logger.error(f"Failed to parse EXTRA_ADMIN_IDS from DB: {e}")
 _saved_bakong = get_setting('BAKONG_TOKEN')
 if _saved_bakong:
     BAKONG_TOKEN = _saved_bakong
@@ -1281,7 +1300,7 @@ def handle_callback_query(update):
             return
 
         # Admin: delete type — step 1: show confirmation
-        elif callback_data.startswith('dts:') and user_id == ADMIN_ID:
+        elif callback_data.startswith('dts:') and is_admin(user_id):
             type_name = _account_type_from_callback_id(callback_data[4:]) or callback_data[4:]
             if type_name not in accounts_data.get('account_types', {}):
                 answer_callback(callback_query['id'], 'ប្រភេទនេះមិនមានទៀតហើយ!', True)
@@ -1302,7 +1321,7 @@ def handle_callback_query(update):
             return
 
         # Admin: delete type — step 2: confirmed, perform deletion
-        elif callback_data.startswith('dtc:') and user_id == ADMIN_ID:
+        elif callback_data.startswith('dtc:') and is_admin(user_id):
             type_name = _account_type_from_callback_id(callback_data[4:]) or callback_data[4:]
             if type_name not in accounts_data.get('account_types', {}):
                 answer_callback(callback_query['id'], 'ប្រភេទនេះមិនមានទៀតហើយ!', True)
@@ -1323,7 +1342,7 @@ def handle_callback_query(update):
             return
 
         # Admin: delete type — cancelled
-        elif callback_data == 'dtcancel' and user_id == ADMIN_ID:
+        elif callback_data == 'dtcancel' and is_admin(user_id):
             answer_callback(callback_query['id'])
             delete_message_async(chat_id, callback_query['message']['message_id'])
             send_message(chat_id, "🚫 <b>បានបោះបង់ការលុបប្រភេទ Account</b>",
@@ -1458,7 +1477,7 @@ def handle_message(update):
         def show_account_selection_local():
             show_account_selection(chat_id)
 
-        if MAINTENANCE_MODE and user_id != ADMIN_ID:
+        if MAINTENANCE_MODE and not is_admin(user_id):
             send_message(chat_id, "🔧 <b>Bot កំពុង Update សូមរង់ចាំមួយភ្លែត...</b>", parse_mode="HTML", reply_to_message_id=False)
             return
 
@@ -1655,14 +1674,14 @@ def handle_message(update):
                     return
 
         # Handle non-admin users
-        if user_id != ADMIN_ID:
+        if not is_admin(user_id):
             # For unrecognized commands, show account selection
             logger.info(f"Non-admin user {user_id} sent unrecognized command, showing account selection")
             show_account_selection_local()
             return
         
         # Admin-only commands
-        if user_id == ADMIN_ID:
+        if is_admin(user_id):
             # Handle /users command — list all users who have used the bot
             if text.strip() == '/users':
                 # Fetch missing profiles inline (works on serverless like Vercel
@@ -1788,6 +1807,54 @@ def handle_message(update):
                     chat_id,
                     f"✅ បានប្តូរ Bakong token រួចរាល់ (រក្សាទុកក្នុង database)។\n"
                     f"Prefix ថ្មី៖ <code>{html.escape(new_token[:10])}…</code>",
+                    parse_mode="HTML", reply_to_message_id=False
+                )
+                return
+
+            # Handle /admin command — manage extra admin user IDs
+            # Usage:
+            #   /admin              → list current admins
+            #   /admin add <id>     → grant admin to a user id
+            #   /admin remove <id>  → revoke admin from a user id
+            if text.strip().startswith('/admin'):
+                global EXTRA_ADMIN_IDS
+                parts = text.strip().split()
+                # /admin (no args): list
+                if len(parts) == 1:
+                    extras = sorted(EXTRA_ADMIN_IDS)
+                    extras_str = "\n".join(f"• <code>{x}</code>" for x in extras) if extras else "(គ្មាន)"
+                    send_message(
+                        chat_id,
+                        f"👑 <b>Admin បឋម៖</b> <code>{ADMIN_ID}</code>\n\n"
+                        f"➕ <b>Admin បន្ថែម៖</b>\n{extras_str}\n\n"
+                        f"ប្រើ៖\n"
+                        f"<code>/admin add &lt;user_id&gt;</code>\n"
+                        f"<code>/admin remove &lt;user_id&gt;</code>",
+                        parse_mode="HTML", reply_to_message_id=False
+                    )
+                    return
+                action = parts[1].lower() if len(parts) > 1 else ''
+                if action in ('add', 'remove') and len(parts) >= 3:
+                    try:
+                        target_id = int(parts[2])
+                    except ValueError:
+                        send_message(chat_id, "❌ user_id ត្រូវតែជាលេខ", reply_to_message_id=False)
+                        return
+                    if target_id == ADMIN_ID:
+                        send_message(chat_id, "ℹ️ Admin បឋមមិនអាចលុប/បន្ថែមបានទេ។", reply_to_message_id=False)
+                        return
+                    if action == 'add':
+                        EXTRA_ADMIN_IDS.add(target_id)
+                        msg = f"✅ បានបន្ថែម <code>{target_id}</code> ជា admin"
+                    else:
+                        EXTRA_ADMIN_IDS.discard(target_id)
+                        msg = f"✅ បានដក <code>{target_id}</code> ចេញពី admin"
+                    set_setting('EXTRA_ADMIN_IDS', json.dumps(sorted(EXTRA_ADMIN_IDS)))
+                    send_message(chat_id, msg, parse_mode="HTML", reply_to_message_id=False)
+                    return
+                send_message(
+                    chat_id,
+                    "ប្រើ៖\n<code>/admin</code>\n<code>/admin add &lt;user_id&gt;</code>\n<code>/admin remove &lt;user_id&gt;</code>",
                     parse_mode="HTML", reply_to_message_id=False
                 )
                 return
