@@ -261,21 +261,34 @@ def _neon_query(query, params=None):
     """Execute a SQL query using a pooled PostgreSQL connection, returning Neon-style dict."""
     pg_query = re.sub(r'\$(\d+)', '%s', query)
     pg_params = tuple(params) if params else ()
-    conn = _db_pool.getconn()
-    try:
-        with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
-            cur.execute(pg_query, pg_params)
-            conn.commit()
+    for attempt in range(2):
+        conn = _db_pool.getconn()
+        try:
+            with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+                cur.execute(pg_query, pg_params)
+                conn.commit()
+                try:
+                    rows = [dict(r) for r in cur.fetchall()]
+                except psycopg2.ProgrammingError:
+                    rows = []
+            _db_pool.putconn(conn)
+            return {'rows': rows}
+        except (psycopg2.OperationalError, psycopg2.InterfaceError):
+            # Stale connection — discard it and retry once with a fresh one
             try:
-                rows = [dict(r) for r in cur.fetchall()]
-            except psycopg2.ProgrammingError:
-                rows = []
-        return {'rows': rows}
-    except Exception:
-        conn.rollback()
-        raise
-    finally:
-        _db_pool.putconn(conn)
+                _db_pool.putconn(conn, close=True)
+            except Exception:
+                pass
+            if attempt == 1:
+                raise
+        except Exception:
+            try:
+                conn.rollback()
+                _db_pool.putconn(conn)
+            except Exception:
+                pass
+            raise
+    return {'rows': []}
 
 def _init_db():
     """Create tables if they don't exist."""
