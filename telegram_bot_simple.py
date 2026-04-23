@@ -783,7 +783,9 @@ load_sessions()
 
 # Tracks the current user message_id per worker so replies never cross between users
 _reply_context = threading.local()
-START_BANNER_FILE_ID = os.environ.get("START_BANNER_FILE_ID", "")
+START_BANNER_FILE_ID = get_setting('START_BANNER_FILE_ID') or os.environ.get("START_BANNER_FILE_ID", "")
+if START_BANNER_FILE_ID:
+    logger.info(f"Loaded START_BANNER_FILE_ID from DB/env: {START_BANNER_FILE_ID[:20]}...")
 
 def _set_reply_to_id(message_id):
     _reply_context.message_id = message_id
@@ -918,7 +920,10 @@ def send_start_banner(chat_id, caption=None, parse_mode=None, message_effect_id=
             result = response.json()
             photos = result.get('result', {}).get('photo', [])
             if photos:
-                START_BANNER_FILE_ID = photos[-1].get('file_id', "")
+                new_file_id = photos[-1].get('file_id', "")
+                if new_file_id and new_file_id != START_BANNER_FILE_ID:
+                    START_BANNER_FILE_ID = new_file_id
+                    _run_background("save_banner_file_id", set_setting, 'START_BANNER_FILE_ID', new_file_id)
             return result
     except requests.RequestException as e:
         logger.error(f"Failed to send start banner: {e}")
