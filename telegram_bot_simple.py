@@ -357,6 +357,14 @@ def _init_db():
                 UNIQUE (chat_id, message_id)
             )
         """)
+        _neon_query("""
+            CREATE TABLE IF NOT EXISTS bot_email_buyer_map (
+                email TEXT PRIMARY KEY,
+                user_id BIGINT NOT NULL,
+                account_type TEXT,
+                purchased_at TIMESTAMPTZ DEFAULT NOW()
+            )
+        """)
         # Backfill any historical buyers into the known-users table so /users
         # never loses anyone on a Vercel cold restart. They already bought, so
         # mark admin_notified=TRUE to avoid spamming the admin about them.
@@ -366,6 +374,31 @@ def _init_db():
             FROM bot_purchase_history
             GROUP BY user_id
             ON CONFLICT (user_id) DO UPDATE SET admin_notified = TRUE
+        """)
+        # Backfill bot_email_buyer_map from all existing purchase history rows.
+        # Use DISTINCT ON to keep only the most-recent purchase per email,
+        # avoiding "ON CONFLICT DO UPDATE affects row a second time" errors.
+        _neon_query("""
+            INSERT INTO bot_email_buyer_map (email, user_id, account_type, purchased_at)
+            SELECT DISTINCT ON (acc->>'email')
+                acc->>'email'   AS email,
+                user_id::BIGINT,
+                account_type,
+                purchased_at
+            FROM bot_purchase_history,
+                 jsonb_array_elements(
+                     CASE jsonb_typeof(accounts)
+                         WHEN 'array' THEN accounts
+                         ELSE '[]'::jsonb
+                     END
+                 ) AS acc
+            WHERE acc->>'email' IS NOT NULL
+              AND acc->>'email' <> ''
+            ORDER BY acc->>'email', purchased_at DESC
+            ON CONFLICT (email) DO UPDATE
+                SET user_id      = EXCLUDED.user_id,
+                    account_type = EXCLUDED.account_type,
+                    purchased_at = EXCLUDED.purchased_at
         """)
         r = _neon_query("SELECT COUNT(*) as cnt FROM bot_accounts")
         if int(r['rows'][0]['cnt']) == 0:
@@ -605,13 +638,28 @@ def delete_pending_payment(user_id):
         logger.error(f"Failed to delete pending payment: {e}")
 
 def save_purchase_history(user_id, account_type, quantity, total_price, accounts=None):
-    """Save a completed purchase to history."""
+    """Save a completed purchase to history and update email→buyer map."""
     try:
-        accounts_json = json.dumps(accounts or [], ensure_ascii=False)
+        accounts_list = accounts or []
+        accounts_json = json.dumps(accounts_list, ensure_ascii=False)
         _neon_query(
             "INSERT INTO bot_purchase_history (user_id, account_type, quantity, total_price, accounts) VALUES ($1, $2, $3, $4, $5)",
             [str(user_id), account_type, str(quantity), str(total_price), accounts_json]
         )
+        # Keep bot_email_buyer_map in sync so verification SMS always reaches buyer
+        for acc in accounts_list:
+            if isinstance(acc, dict) and acc.get('email'):
+                try:
+                    _neon_query("""
+                        INSERT INTO bot_email_buyer_map (email, user_id, account_type)
+                        VALUES ($1, $2, $3)
+                        ON CONFLICT (email) DO UPDATE
+                            SET user_id      = EXCLUDED.user_id,
+                                account_type = EXCLUDED.account_type,
+                                purchased_at = NOW()
+                    """, [acc['email'], str(user_id), account_type])
+                except Exception as map_err:
+                    logger.error(f"Failed to update email_buyer_map for {acc['email']}: {map_err}")
     except Exception as e:
         logger.error(f"Failed to save purchase history: {e}")
 
@@ -637,9 +685,22 @@ def get_all_buyer_ids():
     return []
 
 def find_buyer_by_email(email):
-    """Find the most recent buyer of a given email account from ALL purchase history (no limit)."""
+    """Find the buyer of a given email — checks bot_email_buyer_map first, then purchase history."""
     try:
-        # Use JSONB containment to do an exact email match at the database level
+        # 1. Fast lookup from dedicated map table (most reliable)
+        r = _neon_query(
+            "SELECT user_id FROM bot_email_buyer_map WHERE email = $1",
+            [email]
+        )
+        if r.get('rows'):
+            uid = int(r['rows'][0]['user_id'])
+            logger.info(f"Found buyer {uid} for {email} via email_buyer_map")
+            return uid
+    except Exception as e:
+        logger.error(f"email_buyer_map lookup failed for {email}: {e}")
+
+    try:
+        # 2. Fallback: JSONB containment on purchase history
         r = _neon_query(
             "SELECT user_id FROM bot_purchase_history "
             "WHERE accounts @> $1::jsonb "
@@ -647,8 +708,21 @@ def find_buyer_by_email(email):
             [json.dumps([{"email": email}])]
         )
         if r.get('rows'):
-            return int(r['rows'][0]['user_id'])
-        # Fallback: text search across all rows (handles older rows stored as plain strings)
+            uid = int(r['rows'][0]['user_id'])
+            # Backfill the map so next lookup is instant
+            try:
+                _neon_query("""
+                    INSERT INTO bot_email_buyer_map (email, user_id)
+                    VALUES ($1, $2)
+                    ON CONFLICT (email) DO UPDATE
+                        SET user_id = EXCLUDED.user_id, purchased_at = NOW()
+                """, [email, str(uid)])
+            except Exception:
+                pass
+            logger.info(f"Found buyer {uid} for {email} via purchase_history JSONB (backfilled map)")
+            return uid
+
+        # 3. Last resort: ILIKE text search (handles old plain-string rows)
         r2 = _neon_query(
             "SELECT user_id, accounts FROM bot_purchase_history "
             "WHERE accounts::text ILIKE $1 ORDER BY purchased_at DESC",
@@ -663,7 +737,18 @@ def find_buyer_by_email(email):
                     accounts = []
             for account in accounts:
                 if str(account.get('email', '')).lower() == email.lower():
-                    return int(row.get('user_id'))
+                    uid = int(row.get('user_id'))
+                    try:
+                        _neon_query("""
+                            INSERT INTO bot_email_buyer_map (email, user_id)
+                            VALUES ($1, $2)
+                            ON CONFLICT (email) DO UPDATE
+                                SET user_id = EXCLUDED.user_id, purchased_at = NOW()
+                        """, [email, str(uid)])
+                    except Exception:
+                        pass
+                    logger.info(f"Found buyer {uid} for {email} via purchase_history ILIKE (backfilled map)")
+                    return uid
     except Exception as e:
         logger.error(f"Failed to find buyer by email {email}: {e}")
     return None
