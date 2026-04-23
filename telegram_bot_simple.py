@@ -312,6 +312,12 @@ def _init_db():
             ADD COLUMN IF NOT EXISTS admin_notified BOOLEAN DEFAULT FALSE
         """)
         _neon_query("""
+            CREATE TABLE IF NOT EXISTS bot_settings (
+                key TEXT PRIMARY KEY,
+                value TEXT
+            )
+        """)
+        _neon_query("""
             CREATE TABLE IF NOT EXISTS bot_scheduled_deletions (
                 id SERIAL PRIMARY KEY,
                 chat_id BIGINT NOT NULL,
@@ -341,6 +347,27 @@ def _init_db():
         logger.info("Neon DB initialized via HTTP API")
     except Exception as e:
         logger.error(f"DB init failed: {e}")
+
+def get_setting(key, default=None):
+    """Read a single key from bot_settings; returns default if missing."""
+    try:
+        r = _neon_query("SELECT value FROM bot_settings WHERE key = $1", [key])
+        rows = r.get('rows', []) or []
+        if rows:
+            return rows[0].get('value')
+    except Exception as e:
+        logger.error(f"Failed to read setting {key}: {e}")
+    return default
+
+def set_setting(key, value):
+    """Upsert a key/value into bot_settings so it survives cold restarts."""
+    try:
+        _neon_query("""
+            INSERT INTO bot_settings (key, value) VALUES ($1, $2)
+            ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value
+        """, [key, str(value)])
+    except Exception as e:
+        logger.error(f"Failed to save setting {key}: {e}")
 
 def load_data():
     """Load accounts data from Neon via HTTP API."""
@@ -612,6 +639,16 @@ def find_buyer_by_email(email):
     return None
 
 _init_db()
+
+# Restore admin-configurable settings from Neon so they survive Vercel cold restarts
+_saved_payment_name = get_setting('PAYMENT_NAME')
+if _saved_payment_name:
+    PAYMENT_NAME = _saved_payment_name
+    logger.info(f"Loaded PAYMENT_NAME from DB: {PAYMENT_NAME}")
+_saved_maintenance = get_setting('MAINTENANCE_MODE')
+if _saved_maintenance is not None:
+    MAINTENANCE_MODE = (str(_saved_maintenance).lower() == 'true')
+    logger.info(f"Loaded MAINTENANCE_MODE from DB: {MAINTENANCE_MODE}")
 
 # User session storage for tracking conversation state
 user_sessions = {}
@@ -1685,9 +1722,11 @@ def handle_message(update):
                 arg = parts[1].strip().lower() if len(parts) > 1 else ''
                 if arg == 'on':
                     MAINTENANCE_MODE = True
+                    set_setting('MAINTENANCE_MODE', 'true')
                     send_message(chat_id, "✅ <b>Maintenance mode ON</b>", parse_mode="HTML", reply_to_message_id=False)
                 elif arg == 'off':
                     MAINTENANCE_MODE = False
+                    set_setting('MAINTENANCE_MODE', 'false')
                     send_message(chat_id, "✅ <b>Maintenance mode OFF</b> — Bot ដំណើរការធម្មតាហើយ", parse_mode="HTML", reply_to_message_id=False)
                 else:
                     status = "🔴 ON" if MAINTENANCE_MODE else "🟢 OFF"
@@ -1701,6 +1740,7 @@ def handle_message(update):
                     send_message(chat_id, f"ឈ្មោះ Payment បច្ចុប្បន្ន៖ <b>{PAYMENT_NAME}</b>\n\nប្រើ: <code>/payment ឈ្មោះ</code>", parse_mode="HTML", reply_to_message_id=False)
                     return
                 PAYMENT_NAME = parts[1].strip()
+                set_setting('PAYMENT_NAME', PAYMENT_NAME)
                 send_message(chat_id, f"✅ បានប្តូរឈ្មោះ Payment ទៅជា <b>{PAYMENT_NAME}</b>", parse_mode="HTML", reply_to_message_id=False)
                 return
 
