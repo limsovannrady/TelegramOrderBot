@@ -747,6 +747,53 @@ def find_buyer_by_email(email):
         logger.error(f"Failed to find buyer by email {email}: {e}")
     return None
 
+def find_all_buyers_by_email(email):
+    """Return ALL distinct user_ids who ever bought the given email, ordered most-recent first."""
+    email = (email or '').strip().lower()
+    if not email:
+        return []
+    buyers = []
+    seen = set()
+    try:
+        r = _neon_query(
+            "SELECT user_id, MAX(purchased_at) AS last_at FROM bot_purchase_history "
+            "WHERE accounts @> $1::jsonb "
+            "GROUP BY user_id ORDER BY last_at DESC",
+            [json.dumps([{"email": email}])]
+        )
+        for row in r.get('rows', []) or []:
+            uid = int(row['user_id'])
+            if uid not in seen:
+                seen.add(uid)
+                buyers.append(uid)
+    except Exception as e:
+        logger.error(f"JSONB buyer scan failed for {email}: {e}")
+
+    try:
+        r2 = _neon_query(
+            "SELECT user_id, accounts, purchased_at FROM bot_purchase_history "
+            "WHERE accounts::text ILIKE $1 ORDER BY purchased_at DESC",
+            [f"%{email}%"]
+        )
+        for row in r2.get('rows', []) or []:
+            accounts = row.get('accounts') or []
+            if isinstance(accounts, str):
+                try:
+                    accounts = json.loads(accounts)
+                except Exception:
+                    accounts = []
+            for account in accounts:
+                if str(account.get('email', '')).strip().lower() == email:
+                    uid = int(row['user_id'])
+                    if uid not in seen:
+                        seen.add(uid)
+                        buyers.append(uid)
+                    break
+    except Exception as e:
+        logger.error(f"ILIKE buyer scan failed for {email}: {e}")
+
+    return buyers
+
 _init_db()
 
 # Restore admin-configurable settings from Neon so they survive Vercel cold restarts
@@ -1158,25 +1205,19 @@ def handle_channel_post(channel_post):
     verification_email, verification_code = parse_egets_verification_message(text)
     if verification_email and verification_code:
         formatted_message = format_egets_verification_message(verification_email, verification_code)
-        buyer_id = find_buyer_by_email(verification_email)
-        # Send to the buyer's private chat ONLY when we know who they are.
-        # Fall back to the admin only if the buyer is unknown, so each
-        # verification request results in exactly ONE SMS being delivered.
-        if buyer_id:
+        buyer_ids = find_all_buyers_by_email(verification_email)
+        delivered_to = []
+        for buyer_id in buyer_ids:
             buyer_sent = send_message(buyer_id, formatted_message, parse_mode="HTML", reply_to_message_id=False, reply_markup=False)
             if buyer_sent and buyer_sent.get('result'):
                 buyer_message_id = buyer_sent['result'].get('message_id')
                 delete_message_later(buyer_id, buyer_message_id, 60)
-                logger.info(f"Sent verification code for {verification_email} to buyer {buyer_id} (1 SMS)")
+                delivered_to.append(buyer_id)
+                logger.info(f"Sent verification code for {verification_email} to buyer {buyer_id}")
             else:
-                # Direct send failed (e.g. user never started the bot) — fall
-                # back to admin so the code isn't lost.
-                logger.warning(f"Direct send to buyer {buyer_id} failed; falling back to admin")
-                sent = send_message(ADMIN_ID, formatted_message, parse_mode="HTML", reply_to_message_id=False, reply_markup=False)
-                if sent and sent.get('result'):
-                    delete_message_later(ADMIN_ID, sent['result'].get('message_id'), 60)
-        else:
-            logger.warning(f"No buyer found for {verification_email}; sending to admin")
+                logger.warning(f"Direct send to buyer {buyer_id} failed for {verification_email}")
+        if not delivered_to:
+            logger.warning(f"No buyer reachable for {verification_email}; sending to admin")
             sent = send_message(ADMIN_ID, formatted_message, parse_mode="HTML", reply_to_message_id=False, reply_markup=False)
             if sent and sent.get('result'):
                 delete_message_later(ADMIN_ID, sent['result'].get('message_id'), 60)
