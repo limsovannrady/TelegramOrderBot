@@ -771,6 +771,11 @@ if _saved_bakong:
         logger.error(f"Failed to rebuild KHQR client from saved token: {e}")
     logger.info(f"Loaded BAKONG_TOKEN from DB: {BAKONG_TOKEN[:10]}...")
 
+_saved_channel_id = get_setting('TELEGRAM_CHANNEL_ID')
+if _saved_channel_id:
+    CHANNEL_ID = _saved_channel_id.strip()
+    logger.info(f"Loaded TELEGRAM_CHANNEL_ID from DB: {CHANNEL_ID}")
+
 # User session storage for tracking conversation state
 user_sessions = {}
 
@@ -1921,6 +1926,40 @@ def handle_message(update):
                     chat_id,
                     f"✅ បានប្តូរ Bakong token រួចរាល់ (រក្សាទុកក្នុង database)។\n"
                     f"Prefix ថ្មី៖ <code>{html.escape(new_token[:10])}…</code>",
+                    parse_mode="HTML", reply_to_message_id=False
+                )
+                return
+
+            # Handle /channel_id <new_id> command (admin only) — sets the channel
+            # used for purchase notifications. Stored in Neon DB so it persists
+            # across restarts and replaces the TELEGRAM_CHANNEL_ID env var.
+            if text.strip().startswith('/channel_id'):
+                global CHANNEL_ID
+                parts = text.strip().split(maxsplit=1)
+                if len(parts) < 2 or not parts[1].strip():
+                    current = CHANNEL_ID if CHANNEL_ID else "(មិនទាន់កំណត់)"
+                    send_message(
+                        chat_id,
+                        f"Channel ID បច្ចុប្បន្ន៖ <code>{html.escape(str(current))}</code>\n\n"
+                        f"ប្រើ: <code>/channel_id &lt;chat_id&gt;</code>\n"
+                        f"ឧទាហរណ៍៖ <code>/channel_id -1001234567890</code>\n"
+                        f"ដើម្បីលុប៖ <code>/channel_id off</code>",
+                        parse_mode="HTML", reply_to_message_id=False
+                    )
+                    return
+                new_id = parts[1].strip()
+                if new_id.lower() in ('off', 'none', 'clear', 'delete', 'remove'):
+                    CHANNEL_ID = ""
+                    set_setting('TELEGRAM_CHANNEL_ID', '')
+                    send_message(chat_id, "✅ បានលុប Channel ID (គ្មានការផ្ញើទៅ channel ទៀតទេ)។",
+                                 parse_mode="HTML", reply_to_message_id=False)
+                    return
+                CHANNEL_ID = new_id
+                set_setting('TELEGRAM_CHANNEL_ID', new_id)
+                send_message(
+                    chat_id,
+                    f"✅ បានកំណត់ Channel ID ទៅជា <code>{html.escape(new_id)}</code>។\n"
+                    f"សូមប្រាកដថា bot ជា admin/member ក្នុង channel នោះ។",
                     parse_mode="HTML", reply_to_message_id=False
                 )
                 return
