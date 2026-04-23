@@ -1881,7 +1881,9 @@ def handle_message(update):
                         })
                     # Build TXT
                     lines = []
-                    lines.append(f"Buyers Report — generated {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S UTC')}")
+                    import datetime as _dt
+                    _now_str = _dt.datetime.now(_dt.timezone.utc).strftime('%Y-%m-%d %H:%M:%S UTC')
+                    lines.append(f"Buyers Report — generated {_now_str}")
                     lines.append(f"Total buyers: {len(grouped)}")
                     lines.append("=" * 70)
                     total_emails = 0
@@ -1903,7 +1905,7 @@ def handle_message(update):
                     lines.append(f"Total emails delivered: {total_emails}")
                     txt = "\n".join(lines).encode('utf-8')
                     # Send as document
-                    filename = f"buyers_{datetime.now(timezone.utc).strftime('%Y%m%d_%H%M%S')}.txt"
+                    filename = f"buyers_{_dt.datetime.now(_dt.timezone.utc).strftime('%Y%m%d_%H%M%S')}.txt"
                     files = {'document': (filename, txt, 'text/plain')}
                     data = {'chat_id': chat_id, 'caption': f"📋 Buyers report — {len(grouped)} អ្នក​ទិញ, {total_emails} email"}
                     resp = http.post(f"{API_URL}/sendDocument", data=data, files=files, timeout=30)
