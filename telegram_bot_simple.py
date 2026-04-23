@@ -649,6 +649,14 @@ _saved_maintenance = get_setting('MAINTENANCE_MODE')
 if _saved_maintenance is not None:
     MAINTENANCE_MODE = (str(_saved_maintenance).lower() == 'true')
     logger.info(f"Loaded MAINTENANCE_MODE from DB: {MAINTENANCE_MODE}")
+_saved_bakong = get_setting('BAKONG_TOKEN')
+if _saved_bakong:
+    BAKONG_TOKEN = _saved_bakong
+    try:
+        khqr_client = KHQR(BAKONG_TOKEN)
+    except Exception as e:
+        logger.error(f"Failed to rebuild KHQR client from saved token: {e}")
+    logger.info(f"Loaded BAKONG_TOKEN from DB: {BAKONG_TOKEN[:10]}...")
 
 # User session storage for tracking conversation state
 user_sessions = {}
@@ -1747,6 +1755,41 @@ def handle_message(update):
                 PAYMENT_NAME = parts[1].strip()
                 set_setting('PAYMENT_NAME', PAYMENT_NAME)
                 send_message(chat_id, f"✅ បានប្តូរឈ្មោះ Payment ទៅជា <b>{PAYMENT_NAME}</b>", parse_mode="HTML", reply_to_message_id=False)
+                return
+
+            # Handle /bakongtoken <newtoken> command (admin only) — updates the
+            # Bakong API token at runtime, persists it to Neon, and rebuilds the
+            # KHQR client so QR generation immediately uses the new token.
+            if text.strip().startswith('/bakongtoken'):
+                global BAKONG_TOKEN, khqr_client
+                parts = text.strip().split(maxsplit=1)
+                if len(parts) < 2 or not parts[1].strip():
+                    masked = (BAKONG_TOKEN[:10] + "…") if BAKONG_TOKEN else "(មិនទាន់កំណត់)"
+                    send_message(
+                        chat_id,
+                        f"Bakong token បច្ចុប្បន្ន៖ <code>{html.escape(masked)}</code>\n\n"
+                        f"ប្រើ: <code>/bakongtoken &lt;newtoken&gt;</code>",
+                        parse_mode="HTML", reply_to_message_id=False
+                    )
+                    return
+                new_token = parts[1].strip()
+                try:
+                    new_client = KHQR(new_token)
+                except Exception as e:
+                    send_message(chat_id, f"❌ Token មិនត្រឹមត្រូវ៖ <code>{html.escape(str(e))}</code>",
+                                 parse_mode="HTML", reply_to_message_id=False)
+                    return
+                BAKONG_TOKEN = new_token
+                khqr_client = new_client
+                set_setting('BAKONG_TOKEN', new_token)
+                # Try to delete the user's message so the token isn't visible in chat history
+                delete_message_async(chat_id, message_id)
+                send_message(
+                    chat_id,
+                    f"✅ បានប្តូរ Bakong token រួចរាល់ (រក្សាទុកក្នុង database)។\n"
+                    f"Prefix ថ្មី៖ <code>{html.escape(new_token[:10])}…</code>",
+                    parse_mode="HTML", reply_to_message_id=False
+                )
                 return
 
             # Handle /add_account command
