@@ -252,7 +252,7 @@ def check_payment_status(md5):
         logger.error(f"Failed to check payment status: {type(e).__name__}: {e}")
     return False, None
 
-DATABASE_URL = os.environ.get("DATABASE_URL", "")
+DATABASE_URL = os.environ.get("NEON_DATABASE_URL", "") or os.environ.get("DATABASE_URL", "")
 _db_lock = threading.Lock()
 
 def _get_db_conn():
