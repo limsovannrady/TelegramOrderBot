@@ -648,7 +648,7 @@ def save_purchase_history(user_id, account_type, quantity, total_price, accounts
                             SET user_id      = EXCLUDED.user_id,
                                 account_type = EXCLUDED.account_type,
                                 purchased_at = NOW()
-                    """, [acc['email'], str(user_id), account_type])
+                    """, [str(acc['email']).strip().lower(), str(user_id), account_type])
                 except Exception as map_err:
                     logger.error(f"Failed to update email_buyer_map for {acc['email']}: {map_err}")
     except Exception as e:
@@ -677,10 +677,13 @@ def get_all_buyer_ids():
 
 def find_buyer_by_email(email):
     """Find the buyer of a given email — checks bot_email_buyer_map first, then purchase history."""
+    email = (email or '').strip().lower()
+    if not email:
+        return None
     try:
-        # 1. Fast lookup from dedicated map table (most reliable)
+        # 1. Fast lookup from dedicated map table (case-insensitive for safety)
         r = _neon_query(
-            "SELECT user_id FROM bot_email_buyer_map WHERE email = $1",
+            "SELECT user_id FROM bot_email_buyer_map WHERE LOWER(email) = $1",
             [email]
         )
         if r.get('rows'):
@@ -1134,7 +1137,7 @@ def parse_egets_verification_message(text):
     code_match = re.search(r'(?<!\d)\d{4,8}(?!\d)', text or '')
     if not email_match or not code_match:
         return None, None
-    return email_match.group(0), code_match.group(0)
+    return email_match.group(0).strip().lower(), code_match.group(0)
 
 def format_egets_verification_message(email, code):
     return (
