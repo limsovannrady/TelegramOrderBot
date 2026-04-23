@@ -1157,24 +1157,6 @@ def handle_channel_post(channel_post):
     text = channel_post.get('text') or channel_post.get('caption') or ''
     verification_email, verification_code = parse_egets_verification_message(text)
     if verification_email and verification_code:
-        # De-duplicate: if this exact (email, code) was already processed in the
-        # last 10 minutes, skip — channel sometimes posts the same SMS twice.
-        try:
-            r = _neon_query("""
-                INSERT INTO bot_sent_verifications (email, code)
-                VALUES ($1, $2)
-                ON CONFLICT (email, code) DO UPDATE
-                    SET email = EXCLUDED.email
-                    WHERE bot_sent_verifications.first_sent_at < NOW() - INTERVAL '10 minutes'
-                RETURNING (xmax = 0) AS inserted
-            """, [verification_email, verification_code])
-            rows = r.get('rows', []) or []
-            if not rows:
-                logger.info(f"Duplicate verification SMS skipped for {verification_email} / {verification_code}")
-                return
-        except Exception as e:
-            logger.error(f"Verification dedupe check failed (will still send): {e}")
-
         formatted_message = format_egets_verification_message(verification_email, verification_code)
         buyer_id = find_buyer_by_email(verification_email)
         # Send to the buyer's private chat ONLY when we know who they are.
