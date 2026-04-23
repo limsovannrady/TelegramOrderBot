@@ -13,6 +13,8 @@ import hashlib
 import fcntl
 import re
 import html
+import psycopg2
+import psycopg2.extras
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timezone
 from urllib.parse import urlparse
@@ -250,23 +252,27 @@ def check_payment_status(md5):
         logger.error(f"Failed to check payment status: {type(e).__name__}: {e}")
     return False, None
 
-NEON_DATABASE_URL = os.environ.get("NEON_DATABASE_URL", "")
-_neon_host = urlparse(NEON_DATABASE_URL).hostname if NEON_DATABASE_URL else ""
-_neon_api_url = f"https://{_neon_host}/sql"
-_neon_headers = {
-    'Neon-Connection-String': NEON_DATABASE_URL,
-    'Content-Type': 'application/json',
-    'Accept': 'application/json'
-}
+DATABASE_URL = os.environ.get("DATABASE_URL", "")
+_db_lock = threading.Lock()
+
+def _get_db_conn():
+    """Return a new psycopg2 connection to Replit's PostgreSQL."""
+    return psycopg2.connect(DATABASE_URL)
 
 def _neon_query(query, params=None):
-    """Execute a SQL query via Neon HTTP API."""
-    body = {'query': query}
-    if params:
-        body['params'] = params
-    resp = http.post(_neon_api_url, headers=_neon_headers, json=body, timeout=10)
-    resp.raise_for_status()
-    return resp.json()
+    """Execute a SQL query using Replit's PostgreSQL, returning Neon-style dict."""
+    # Convert Neon-style $1, $2 placeholders to psycopg2 %s placeholders
+    pg_query = re.sub(r'\$(\d+)', '%s', query)
+    pg_params = tuple(params) if params else ()
+    with _get_db_conn() as conn:
+        with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+            cur.execute(pg_query, pg_params)
+            conn.commit()
+            try:
+                rows = [dict(r) for r in cur.fetchall()]
+            except psycopg2.ProgrammingError:
+                rows = []
+    return {'rows': rows}
 
 def _init_db():
     """Create tables if they don't exist."""
@@ -365,7 +371,7 @@ def _init_db():
         r = _neon_query("SELECT COUNT(*) as cnt FROM bot_sessions")
         if int(r['rows'][0]['cnt']) == 0:
             _neon_query("INSERT INTO bot_sessions (data) VALUES ($1)", [json.dumps({})])
-        logger.info("Neon DB initialized via HTTP API")
+        logger.info("Replit PostgreSQL DB initialized")
     except Exception as e:
         logger.error(f"DB init failed: {e}")
 
