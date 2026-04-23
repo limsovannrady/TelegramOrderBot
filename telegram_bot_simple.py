@@ -15,6 +15,7 @@ import re
 import html
 import psycopg2
 import psycopg2.extras
+import psycopg2.pool
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timezone
 from urllib.parse import urlparse
@@ -253,18 +254,15 @@ def check_payment_status(md5):
     return False, None
 
 DATABASE_URL = os.environ.get("NEON_DATABASE_URL", "") or os.environ.get("DATABASE_URL", "")
-_db_lock = threading.Lock()
 
-def _get_db_conn():
-    """Return a new psycopg2 connection to Replit's PostgreSQL."""
-    return psycopg2.connect(DATABASE_URL)
+_db_pool = psycopg2.pool.ThreadedConnectionPool(1, 10, DATABASE_URL)
 
 def _neon_query(query, params=None):
-    """Execute a SQL query using Replit's PostgreSQL, returning Neon-style dict."""
-    # Convert Neon-style $1, $2 placeholders to psycopg2 %s placeholders
+    """Execute a SQL query using a pooled PostgreSQL connection, returning Neon-style dict."""
     pg_query = re.sub(r'\$(\d+)', '%s', query)
     pg_params = tuple(params) if params else ()
-    with _get_db_conn() as conn:
+    conn = _db_pool.getconn()
+    try:
         with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
             cur.execute(pg_query, pg_params)
             conn.commit()
@@ -272,7 +270,12 @@ def _neon_query(query, params=None):
                 rows = [dict(r) for r in cur.fetchall()]
             except psycopg2.ProgrammingError:
                 rows = []
-    return {'rows': rows}
+        return {'rows': rows}
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        _db_pool.putconn(conn)
 
 def _init_db():
     """Create tables if they don't exist."""
