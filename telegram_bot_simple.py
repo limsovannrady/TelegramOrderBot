@@ -1082,26 +1082,28 @@ def handle_channel_post(channel_post):
             logger.error(f"Verification dedupe check failed (will still send): {e}")
 
         formatted_message = format_egets_verification_message(verification_email, verification_code)
-        sent = send_message(ADMIN_ID, formatted_message, parse_mode="HTML", reply_to_message_id=False, reply_markup=False)
-        if sent and sent.get('result'):
-            admin_message_id = sent['result'].get('message_id')
-            logger.info(f"Scheduled admin verification message {admin_message_id} deletion in 60 seconds")
-            delete_message_later(ADMIN_ID, admin_message_id, 60)
-        else:
-            logger.warning(f"Could not schedule verification message deletion, send response: {sent}")
         buyer_id = find_buyer_by_email(verification_email)
+        # Send to the buyer's private chat ONLY when we know who they are.
+        # Fall back to the admin only if the buyer is unknown, so each
+        # verification request results in exactly ONE SMS being delivered.
         if buyer_id:
             buyer_sent = send_message(buyer_id, formatted_message, parse_mode="HTML", reply_to_message_id=False, reply_markup=False)
             if buyer_sent and buyer_sent.get('result'):
                 buyer_message_id = buyer_sent['result'].get('message_id')
-                logger.info(f"Scheduled buyer verification message {buyer_message_id} deletion in 60 seconds")
                 delete_message_later(buyer_id, buyer_message_id, 60)
-                logger.info(f"Sent verification code for {verification_email} to buyer {buyer_id}")
+                logger.info(f"Sent verification code for {verification_email} to buyer {buyer_id} (1 SMS)")
             else:
-                logger.warning(f"Failed to send verification code for {verification_email} to buyer {buyer_id}: {buyer_sent}")
+                # Direct send failed (e.g. user never started the bot) — fall
+                # back to admin so the code isn't lost.
+                logger.warning(f"Direct send to buyer {buyer_id} failed; falling back to admin")
+                sent = send_message(ADMIN_ID, formatted_message, parse_mode="HTML", reply_to_message_id=False, reply_markup=False)
+                if sent and sent.get('result'):
+                    delete_message_later(ADMIN_ID, sent['result'].get('message_id'), 60)
         else:
-            logger.warning(f"No buyer found for verification email {verification_email}")
-        logger.info(f"Sent formatted channel post {message_id} from {chat_id} to admin {ADMIN_ID}")
+            logger.warning(f"No buyer found for {verification_email}; sending to admin")
+            sent = send_message(ADMIN_ID, formatted_message, parse_mode="HTML", reply_to_message_id=False, reply_markup=False)
+            if sent and sent.get('result'):
+                delete_message_later(ADMIN_ID, sent['result'].get('message_id'), 60)
         return
 
     copied = copy_message(ADMIN_ID, chat_id, message_id)
