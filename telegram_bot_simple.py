@@ -14,6 +14,7 @@ import fcntl
 import re
 import html
 from concurrent.futures import ThreadPoolExecutor
+from datetime import datetime, timezone
 from urllib.parse import urlparse
 from urllib.parse import quote as url_quote
 from bakong_khqr import KHQR
@@ -1837,6 +1838,81 @@ def handle_message(update):
                     f"Prefix ថ្មី៖ <code>{html.escape(new_token[:10])}…</code>",
                     parse_mode="HTML", reply_to_message_id=False
                 )
+                return
+
+            # Handle /buyers — export every buyer + their purchased emails as a .txt file
+            if text.strip() == '/buyers':
+                try:
+                    r = _neon_query(
+                        "SELECT ph.user_id, ph.account_type, ph.quantity, ph.total_price, "
+                        "ph.accounts, ph.purchased_at, "
+                        "ku.first_name, ku.last_name, ku.username "
+                        "FROM bot_purchase_history ph "
+                        "LEFT JOIN bot_known_users ku ON ku.user_id = ph.user_id "
+                        "ORDER BY ph.user_id, ph.purchased_at DESC"
+                    )
+                    rows = r.get('rows', []) or []
+                    if not rows:
+                        send_message(chat_id, "មិនមានទិន្នន័យ​ទិញ​នៅឡើយ​ទេ។", reply_to_message_id=False)
+                        return
+                    # Group by buyer
+                    grouped = {}
+                    for row in rows:
+                        uid = str(row.get('user_id'))
+                        grouped.setdefault(uid, {
+                            'first_name': row.get('first_name') or '',
+                            'last_name': row.get('last_name') or '',
+                            'username': row.get('username') or '',
+                            'purchases': []
+                        })
+                        accounts = row.get('accounts') or []
+                        if isinstance(accounts, str):
+                            try:
+                                accounts = json.loads(accounts)
+                            except Exception:
+                                accounts = []
+                        emails = [str(a.get('email', '')) for a in accounts if isinstance(a, dict) and a.get('email')]
+                        grouped[uid]['purchases'].append({
+                            'type': row.get('account_type') or '',
+                            'qty': row.get('quantity') or 0,
+                            'price': row.get('total_price') or 0,
+                            'when': str(row.get('purchased_at') or ''),
+                            'emails': emails
+                        })
+                    # Build TXT
+                    lines = []
+                    lines.append(f"Buyers Report — generated {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S UTC')}")
+                    lines.append(f"Total buyers: {len(grouped)}")
+                    lines.append("=" * 70)
+                    total_emails = 0
+                    for uid, info in grouped.items():
+                        full_name = (info['first_name'] + ' ' + info['last_name']).strip() or '(no name)'
+                        uname = f"@{info['username']}" if info['username'] else '—'
+                        lines.append("")
+                        lines.append(f"User ID : {uid}")
+                        lines.append(f"Name    : {full_name}")
+                        lines.append(f"Username: {uname}")
+                        lines.append(f"Purchases ({len(info['purchases'])}):")
+                        for p in info['purchases']:
+                            lines.append(f"  [{p['when']}] {p['type']} x{p['qty']} = ${p['price']}")
+                            for em in p['emails']:
+                                lines.append(f"      • {em}")
+                                total_emails += 1
+                        lines.append("-" * 70)
+                    lines.append("")
+                    lines.append(f"Total emails delivered: {total_emails}")
+                    txt = "\n".join(lines).encode('utf-8')
+                    # Send as document
+                    filename = f"buyers_{datetime.now(timezone.utc).strftime('%Y%m%d_%H%M%S')}.txt"
+                    files = {'document': (filename, txt, 'text/plain')}
+                    data = {'chat_id': chat_id, 'caption': f"📋 Buyers report — {len(grouped)} អ្នក​ទិញ, {total_emails} email"}
+                    resp = http.post(f"{API_URL}/sendDocument", data=data, files=files, timeout=30)
+                    if resp.status_code >= 400 or not resp.json().get('ok'):
+                        logger.error(f"sendDocument failed: {resp.text}")
+                        send_message(chat_id, "❌ បរាជ័យក្នុងការផ្ញើ​ឯកសារ", reply_to_message_id=False)
+                except Exception as e:
+                    logger.error(f"/buyers failed: {e}")
+                    send_message(chat_id, f"❌ Error: <code>{html.escape(str(e))}</code>", parse_mode="HTML", reply_to_message_id=False)
                 return
 
             # Handle /admin command — manage extra admin user IDs
