@@ -324,6 +324,14 @@ def _init_db():
             ADD COLUMN IF NOT EXISTS admin_notified BOOLEAN DEFAULT FALSE
         """)
         _neon_query("""
+            CREATE TABLE IF NOT EXISTS bot_sent_verifications (
+                email TEXT NOT NULL,
+                code TEXT NOT NULL,
+                first_sent_at TIMESTAMPTZ DEFAULT NOW(),
+                PRIMARY KEY (email, code)
+            )
+        """)
+        _neon_query("""
             CREATE TABLE IF NOT EXISTS bot_settings (
                 key TEXT PRIMARY KEY,
                 value TEXT
@@ -1055,6 +1063,24 @@ def handle_channel_post(channel_post):
     text = channel_post.get('text') or channel_post.get('caption') or ''
     verification_email, verification_code = parse_egets_verification_message(text)
     if verification_email and verification_code:
+        # De-duplicate: if this exact (email, code) was already processed in the
+        # last 10 minutes, skip — channel sometimes posts the same SMS twice.
+        try:
+            r = _neon_query("""
+                INSERT INTO bot_sent_verifications (email, code)
+                VALUES ($1, $2)
+                ON CONFLICT (email, code) DO UPDATE
+                    SET email = EXCLUDED.email
+                    WHERE bot_sent_verifications.first_sent_at < NOW() - INTERVAL '10 minutes'
+                RETURNING (xmax = 0) AS inserted
+            """, [verification_email, verification_code])
+            rows = r.get('rows', []) or []
+            if not rows:
+                logger.info(f"Duplicate verification SMS skipped for {verification_email} / {verification_code}")
+                return
+        except Exception as e:
+            logger.error(f"Verification dedupe check failed (will still send): {e}")
+
         formatted_message = format_egets_verification_message(verification_email, verification_code)
         sent = send_message(ADMIN_ID, formatted_message, parse_mode="HTML", reply_to_message_id=False, reply_markup=False)
         if sent and sent.get('result'):
