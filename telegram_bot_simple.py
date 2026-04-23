@@ -307,14 +307,29 @@ def _init_db():
                 last_seen TIMESTAMPTZ DEFAULT NOW()
             )
         """)
-        # Backfill any historical buyers into the known-users table so /users
-        # never loses anyone on a Vercel cold restart.
         _neon_query("""
-            INSERT INTO bot_known_users (user_id, first_seen, last_seen)
-            SELECT DISTINCT user_id, MIN(purchased_at), MAX(purchased_at)
+            ALTER TABLE bot_known_users
+            ADD COLUMN IF NOT EXISTS admin_notified BOOLEAN DEFAULT FALSE
+        """)
+        _neon_query("""
+            CREATE TABLE IF NOT EXISTS bot_scheduled_deletions (
+                id SERIAL PRIMARY KEY,
+                chat_id BIGINT NOT NULL,
+                message_id BIGINT NOT NULL,
+                delete_at TIMESTAMPTZ NOT NULL,
+                created_at TIMESTAMPTZ DEFAULT NOW(),
+                UNIQUE (chat_id, message_id)
+            )
+        """)
+        # Backfill any historical buyers into the known-users table so /users
+        # never loses anyone on a Vercel cold restart. They already bought, so
+        # mark admin_notified=TRUE to avoid spamming the admin about them.
+        _neon_query("""
+            INSERT INTO bot_known_users (user_id, first_seen, last_seen, admin_notified)
+            SELECT DISTINCT user_id, MIN(purchased_at), MAX(purchased_at), TRUE
             FROM bot_purchase_history
             GROUP BY user_id
-            ON CONFLICT (user_id) DO NOTHING
+            ON CONFLICT (user_id) DO UPDATE SET admin_notified = TRUE
         """)
         r = _neon_query("SELECT COUNT(*) as cnt FROM bot_accounts")
         if int(r['rows'][0]['cnt']) == 0:
@@ -415,19 +430,70 @@ def delete_message_async(chat_id, message_id):
         return
     _run_background("delete_message", _delete_message_now, chat_id, message_id)
 
+def _record_scheduled_deletion(chat_id, message_id, delay_seconds):
+    try:
+        _neon_query("""
+            INSERT INTO bot_scheduled_deletions (chat_id, message_id, delete_at)
+            VALUES ($1, $2, NOW() + ($3 || ' seconds')::interval)
+            ON CONFLICT (chat_id, message_id) DO UPDATE SET
+                delete_at = EXCLUDED.delete_at
+        """, [str(chat_id), str(message_id), str(delay_seconds)])
+    except Exception as e:
+        logger.error(f"Failed to record scheduled deletion: {e}")
+
+def _clear_scheduled_deletion(chat_id, message_id):
+    try:
+        _neon_query(
+            "DELETE FROM bot_scheduled_deletions WHERE chat_id = $1 AND message_id = $2",
+            [str(chat_id), str(message_id)]
+        )
+    except Exception as e:
+        logger.error(f"Failed to clear scheduled deletion: {e}")
+
+def _run_scheduled_delete(chat_id, message_id, delay_seconds):
+    if delay_seconds > 0:
+        time.sleep(delay_seconds)
+    for attempt in range(2):
+        try:
+            if _delete_message_now(chat_id, message_id):
+                _clear_scheduled_deletion(chat_id, message_id)
+                return
+        except Exception as e:
+            logger.warning(f"Failed delayed message delete attempt {attempt + 1}: {e}")
+        time.sleep(2)
+    # Best-effort cleanup even if Telegram rejected (message may already be gone)
+    _clear_scheduled_deletion(chat_id, message_id)
+
 def delete_message_later(chat_id, message_id, delay_seconds=120):
     if not message_id:
         return
-    def delayed_delete():
-        time.sleep(delay_seconds)
-        for attempt in range(2):
+    _record_scheduled_deletion(chat_id, message_id, delay_seconds)
+    _run_background("delete_message_later", _run_scheduled_delete, chat_id, message_id, delay_seconds)
+
+def resume_scheduled_deletions():
+    """On startup, re-arm any scheduled deletions saved in the DB so they survive cold restarts."""
+    try:
+        r = _neon_query(
+            "SELECT chat_id, message_id, "
+            "GREATEST(0, EXTRACT(EPOCH FROM (delete_at - NOW())))::int AS remaining "
+            "FROM bot_scheduled_deletions"
+        )
+        rows = r.get('rows', []) or []
+        for row in rows:
             try:
-                if _delete_message_now(chat_id, message_id):
-                    return
+                chat_id = int(row['chat_id'])
+                message_id = int(row['message_id'])
+                remaining = int(row.get('remaining') or 0)
+                _run_background(
+                    "resume_scheduled_delete",
+                    _run_scheduled_delete, chat_id, message_id, remaining
+                )
             except Exception as e:
-                logger.warning(f"Failed delayed message delete attempt {attempt + 1}: {e}")
-            time.sleep(2)
-    _run_background("delete_message_later", delayed_delete)
+                logger.warning(f"Bad scheduled deletion row {row}: {e}")
+        if rows:
+            logger.info(f"Resumed {len(rows)} scheduled message deletion(s) from DB")
+    except Exception as e:
+        logger.error(f"Failed to resume scheduled deletions: {e}")
 
 def save_pending_payment(user_id, chat_id, session):
     """Save a pending payment to Neon DB so it persists across sessions."""
@@ -550,11 +616,32 @@ _init_db()
 # User session storage for tracking conversation state
 user_sessions = {}
 
-# In-memory set of user IDs we've already notified the admin about during this
-# process lifetime. Resets on every cold start (e.g. Vercel cold restart),
-# which intentionally re-sends the notification once per user per cold start.
+# Process-local cache of user IDs we've already notified the admin about.
+# Backed by the bot_known_users.admin_notified column so a Vercel cold restart
+# never re-spams the admin with duplicate "new user" notifications.
 _notified_users = set()
 _notified_users_lock = threading.Lock()
+
+def _is_admin_notified(uid):
+    """Return True if the admin has already been notified about this user.
+    Checks the in-memory cache first, then falls back to the DB so the answer
+    survives cold restarts."""
+    with _notified_users_lock:
+        if uid in _notified_users:
+            return True
+    try:
+        r = _neon_query(
+            "SELECT admin_notified FROM bot_known_users WHERE user_id = $1",
+            [str(uid)]
+        )
+        rows = r.get('rows', []) or []
+        if rows and rows[0].get('admin_notified'):
+            with _notified_users_lock:
+                _notified_users.add(uid)
+            return True
+    except Exception as e:
+        logger.error(f"Failed to check admin_notified for {uid}: {e}")
+    return False
 
 def fetch_user_info(user_id):
     """Fetch a user's profile from Telegram via getChat. Returns dict or None."""
@@ -607,6 +694,9 @@ def notify_admin_new_user(user):
         uid = user.get('id')
         if not uid or uid == ADMIN_ID:
             return
+        # Cross-restart de-dupe: skip if the DB already says we've notified.
+        if _is_admin_notified(uid):
+            return
         with _notified_users_lock:
             if uid in _notified_users:
                 return
@@ -633,13 +723,14 @@ def notify_admin_new_user(user):
                 logger.error(f"Failed to send new-user notification: {e}")
             try:
                 _neon_query("""
-                    INSERT INTO bot_known_users (user_id, first_name, last_name, username, first_seen, last_seen)
-                    VALUES ($1, $2, $3, $4, NOW(), NOW())
+                    INSERT INTO bot_known_users (user_id, first_name, last_name, username, first_seen, last_seen, admin_notified)
+                    VALUES ($1, $2, $3, $4, NOW(), NOW(), TRUE)
                     ON CONFLICT (user_id) DO UPDATE SET
                         first_name = EXCLUDED.first_name,
                         last_name = EXCLUDED.last_name,
                         username = EXCLUDED.username,
-                        last_seen = NOW()
+                        last_seen = NOW(),
+                        admin_notified = TRUE
                 """, [str(uid), first, last, username or ''])
             except Exception as e:
                 logger.error(f"Failed to record known user {uid}: {e}")
@@ -1856,6 +1947,10 @@ def main():
 
     logger.info("Starting Telegram Bot...")
     logger.info(f"Bot token configured: {BOT_TOKEN[:10]}...")
+
+    # Re-arm any scheduled message deletions from the DB so a cold restart
+    # doesn't leak un-deleted messages.
+    resume_scheduled_deletions()
 
     # Delete any active webhook so polling mode works without 409 conflicts
     try:
