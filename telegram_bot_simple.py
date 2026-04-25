@@ -1495,18 +1495,23 @@ def _show_users_list_inline(chat_id):
 
 
 def _show_delete_type_menu_inline(chat_id, user_id=None):
-    """Show a reply keyboard of account types to delete."""
-    types = list(accounts_data.get('account_types', {}).keys())
+    """Show a reply keyboard of account types to delete (only types with stock)."""
+    types = [
+        t for t in accounts_data.get('account_types', {}).keys()
+        if len(accounts_data['account_types'].get(t, [])) > 0
+    ]
     if not types:
         send_message(chat_id, "⚠️ <b>មិនមានប្រភេទ Account ណាមួយទេ!</b>",
                      parse_mode="HTML", reply_to_message_id=None)
         return
     rows = []
+    labels_map = {}
     for t in types:
         count = len(accounts_data['account_types'].get(t, []))
         price = accounts_data.get('prices', {}).get(t, 0)
         label = f"{_short_label(t)} ({count} pcs · ${price})"
         rows.append([{'text': label}])
+        labels_map[label] = t
     rows.append([{'text': BTN_BACK_SETTINGS}])
     reply_keyboard = {
         'keyboard': rows,
@@ -1517,7 +1522,7 @@ def _show_delete_type_menu_inline(chat_id, user_id=None):
     with _data_lock:
         user_sessions[uid] = {
             'state': 'delete_type_select',
-            'labels': {f"{_short_label(t)} ({len(accounts_data['account_types'].get(t, []))} pcs · ${accounts_data.get('prices', {}).get(t, 0)})": t for t in types},
+            'labels': labels_map,
         }
     save_sessions_async()
     send_message(chat_id, "🗑 <b>ជ្រើសរើសប្រភេទ Account ដែលចង់លុប៖</b>",
