@@ -1484,8 +1484,8 @@ def _show_users_list_inline(chat_id):
         send_message(chat_id, chunk, parse_mode="HTML", reply_to_message_id=False)
 
 
-def _show_delete_type_menu_inline(chat_id):
-    """Show inline menu of account types to delete (same logic as /delete_type)."""
+def _show_delete_type_menu_inline(chat_id, user_id=None):
+    """Show a reply keyboard of account types to delete."""
     types = list(accounts_data.get('account_types', {}).keys())
     if not types:
         send_message(chat_id, "⚠️ <b>មិនមានប្រភេទ Account ណាមួយទេ!</b>",
@@ -1496,11 +1496,22 @@ def _show_delete_type_menu_inline(chat_id):
         count = len(accounts_data['account_types'].get(t, []))
         price = accounts_data.get('prices', {}).get(t, 0)
         label = f"{_short_label(t)} ({count} pcs · ${price})"
-        cb = f"dts:{_type_callback_id(t)}"
-        rows.append([{'text': label, 'callback_data': cb}])
-    keyboard = {'inline_keyboard': rows}
+        rows.append([{'text': label}])
+    rows.append([{'text': BTN_BACK_SETTINGS}])
+    reply_keyboard = {
+        'keyboard': rows,
+        'resize_keyboard': True,
+        'is_persistent': True,
+    }
+    uid = user_id if user_id is not None else chat_id
+    with _data_lock:
+        user_sessions[uid] = {
+            'state': 'delete_type_select',
+            'labels': {f"{_short_label(t)} ({len(accounts_data['account_types'].get(t, []))} pcs · ${accounts_data.get('prices', {}).get(t, 0)})": t for t in types},
+        }
+    save_sessions_async()
     send_message(chat_id, "🗑 <b>ជ្រើសរើសប្រភេទ Account ដែលចង់លុប៖</b>",
-                 parse_mode="HTML", reply_to_message_id=None, reply_markup=keyboard)
+                 parse_mode="HTML", reply_to_message_id=False, reply_markup=reply_keyboard)
 
 
 def _export_buyers_report_inline(chat_id):
@@ -2001,7 +2012,7 @@ def handle_callback_query(update):
 
             if action == 'delete_type':
                 delete_message_async(chat_id, menu_msg_id)
-                _show_delete_type_menu_inline(chat_id)
+                _show_delete_type_menu_inline(chat_id, user_id)
                 return
 
             if action == 'users':
@@ -2343,6 +2354,32 @@ def handle_message(update):
                 if _handle_admin_settings_input(chat_id, user_id, message_id, _key, text):
                     return
 
+            # Admin: handle account-type pick from the delete-type reply keyboard
+            if _state == 'delete_type_select':
+                stripped = text.strip()
+                labels = user_sessions[user_id].get('labels', {}) or {}
+                type_name = labels.get(stripped)
+                if type_name and type_name in accounts_data.get('account_types', {}):
+                    with _data_lock:
+                        if user_id in user_sessions:
+                            del user_sessions[user_id]
+                    save_sessions_async()
+                    count = len(accounts_data['account_types'].get(type_name, []))
+                    price = accounts_data.get('prices', {}).get(type_name, 0)
+                    confirm_cb = f"dtc:{_type_callback_id(type_name)}"
+                    keyboard = {'inline_keyboard': [[
+                        {'text': '✅ បញ្ជាក់លុប', 'callback_data': confirm_cb},
+                        {'text': '🚫 បោះបង់', 'callback_data': 'dtcancel'}
+                    ]]}
+                    send_message(chat_id,
+                        f"⚠️ <b>តើអ្នកពិតជាចង់លុបប្រភេទ Account នេះមែនទេ?</b>\n\n"
+                        f"<blockquote>🔹 ប្រភេទ: {html.escape(type_name)}\n🔹 ចំនួន Account: {count}\n🔹 តម្លៃ: ${price}</blockquote>\n\n"
+                        f"Account ទាំងអស់ក្នុងប្រភេទនេះនឹងត្រូវបានលុបចោលជាអចិន្ត្រៃយ៍!",
+                        parse_mode="HTML", reply_to_message_id=False,
+                        reply_markup=keyboard)
+                    send_admin_settings_menu(chat_id)
+                    return
+
         # Admin: route reply-keyboard button presses from the settings menu / submenus
         if is_admin(user_id) and text.strip() in ADMIN_BUTTON_LABELS:
             btn = text.strip()
@@ -2370,7 +2407,7 @@ def handle_message(update):
                 _start_add_account_flow(chat_id, user_id, message_id)
                 return
             if btn == BTN_DELETE_TYPE:
-                _show_delete_type_menu_inline(chat_id)
+                _show_delete_type_menu_inline(chat_id, user_id)
                 return
             if btn == BTN_USERS:
                 _show_users_list_inline(chat_id)
