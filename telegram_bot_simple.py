@@ -1321,6 +1321,17 @@ BTN_MAINT_OFF       = '🟢 បើក Bot'
 BTN_CANCEL_INPUT    = '🚫 បោះបង់'
 BTN_DELETE_CONFIRM  = '✅ បញ្ជាក់លុប'
 BTN_DELETE_CANCEL   = '🚫 បោះបង់ការលុប'
+BTN_BROADCAST_CONFIRM = '✅ បញ្ជាក់ផ្សាយ'
+BTN_BROADCAST_CANCEL  = '🚫 បោះបង់ការផ្សាយ'
+
+BROADCAST_CONFIRM_KEYBOARD = {
+    'keyboard': [
+        [{'text': BTN_BROADCAST_CONFIRM}],
+        [{'text': BTN_BROADCAST_CANCEL}],
+    ],
+    'resize_keyboard': True,
+    'is_persistent': True
+}
 
 ADMIN_SETTINGS_REPLY_KEYBOARD = {
     'keyboard': [
@@ -1805,12 +1816,20 @@ def _handle_admin_settings_input(chat_id, user_id, message_id, key, text):
                          reply_to_message_id=False)
             return True
         with _data_lock:
-            if user_id in user_sessions:
-                del user_sessions[user_id]
+            user_sessions[user_id] = {
+                'state': 'broadcast_confirm',
+                'broadcast_message_id': message_id,
+                'broadcast_chat_id': chat_id,
+            }
         save_sessions_async()
-        send_message(chat_id, "📢 កំពុង​ផ្សាយ​សារ ... សូមរង់ចាំ",
-                     reply_to_message_id=False, reply_markup=ADMIN_SETTINGS_REPLY_KEYBOARD)
-        background_pool.submit(_run_broadcast, chat_id, message_id)
+        send_message(
+            chat_id,
+            "❓ <b>តើ​អ្នក​ប្រាកដ​ជា​ចង់​ផ្សាយ​សារ​ខាង​លើ​នេះ​ទៅ​អ្នក​ប្រើ​ប្រាស់​ទាំង​អស់​មែន​ទេ?</b>\n\n"
+            "ចុច <b>✅ បញ្ជាក់ផ្សាយ</b> ដើម្បី​ផ្សាយ ឬ <b>🚫 បោះបង់ការផ្សាយ</b> ដើម្បី​បោះបង់។",
+            parse_mode="HTML",
+            reply_to_message_id=False,
+            reply_markup=BROADCAST_CONFIRM_KEYBOARD
+        )
         return True
 
     return False
@@ -2524,6 +2543,35 @@ def handle_message(update):
                             del user_sessions[user_id]
                     save_sessions_async()
                     send_message(chat_id, "🚫 <b>បានបោះបង់ការលុបប្រភេទ Account</b>",
+                                 parse_mode="HTML", reply_to_message_id=False,
+                                 reply_markup=ADMIN_SETTINGS_REPLY_KEYBOARD)
+                    return
+
+            # Admin: handle confirm/cancel of broadcast
+            if _state == 'broadcast_confirm':
+                stripped = text.strip()
+                if stripped == BTN_BROADCAST_CONFIRM:
+                    bcast_msg_id = user_sessions[user_id].get('broadcast_message_id')
+                    bcast_chat_id = user_sessions[user_id].get('broadcast_chat_id') or chat_id
+                    with _data_lock:
+                        if user_id in user_sessions:
+                            del user_sessions[user_id]
+                    save_sessions_async()
+                    if not bcast_msg_id:
+                        send_message(chat_id, "⚠️ មិន​ឃើញ​សារ​ដែល​ចង់​ផ្សាយ​ទេ សូម​ចាប់ផ្ដើម​ឡើង​វិញ។",
+                                     reply_to_message_id=False,
+                                     reply_markup=ADMIN_SETTINGS_REPLY_KEYBOARD)
+                        return
+                    send_message(chat_id, "📢 កំពុង​ផ្សាយ​សារ ... សូមរង់ចាំ",
+                                 reply_to_message_id=False, reply_markup=ADMIN_SETTINGS_REPLY_KEYBOARD)
+                    background_pool.submit(_run_broadcast, bcast_chat_id, bcast_msg_id)
+                    return
+                if stripped == BTN_BROADCAST_CANCEL:
+                    with _data_lock:
+                        if user_id in user_sessions:
+                            del user_sessions[user_id]
+                    save_sessions_async()
+                    send_message(chat_id, "🚫 <b>បាន​បោះបង់​ការ​ផ្សាយ</b>",
                                  parse_mode="HTML", reply_to_message_id=False,
                                  reply_markup=ADMIN_SETTINGS_REPLY_KEYBOARD)
                     return
