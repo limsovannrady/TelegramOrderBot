@@ -1315,8 +1315,8 @@ BTN_CHANNEL_EDIT    = '✏️ ប្តូរ Channel ID'
 BTN_CHANNEL_CLEAR   = '🗑 លុប Channel ID'
 BTN_ADMIN_ADD       = '➕ បន្ថែម Admin'
 BTN_ADMIN_REMOVE    = '➖ ដក Admin'
-BTN_MAINT_ON        = '🔴 បើក Maintenance Mode'
-BTN_MAINT_OFF       = '🟢 បិទ Maintenance Mode'
+BTN_MAINT_ON        = '🔴 បិទ Bot'
+BTN_MAINT_OFF       = '🟢 បើក Bot'
 BTN_CANCEL_INPUT    = '🚫 បោះបង់'
 BTN_DELETE_CONFIRM  = '✅ បញ្ជាក់លុប'
 BTN_DELETE_CANCEL   = '🚫 បោះបង់ការលុប'
@@ -1646,9 +1646,9 @@ def _show_bakong_inline(chat_id):
 
 
 def _show_maintenance_inline(chat_id):
-    """Show maintenance mode status with the maintenance reply submenu."""
-    status = "🔴 ON" if MAINTENANCE_MODE else "🟢 OFF"
-    text_msg = f"🛠 <b>Maintenance Mode បច្ចុប្បន្ន៖</b> {status}"
+    """Show bot on/off status with the maintenance reply submenu."""
+    status = "🔴 បិទ" if MAINTENANCE_MODE else "🟢 បើក"
+    text_msg = f"🛠 <b>ស្ថានភាព Bot បច្ចុប្បន្ន៖</b> {status}"
     send_message(chat_id, text_msg, parse_mode="HTML", reply_to_message_id=False,
                  reply_markup=MAINTENANCE_SUBMENU_KEYBOARD)
 
@@ -2525,13 +2525,13 @@ def handle_message(update):
             if btn == BTN_MAINT_ON:
                 MAINTENANCE_MODE = True
                 set_setting('MAINTENANCE_MODE', 'true')
-                send_message(chat_id, "🔴 បានបើក Maintenance Mode (ON)", parse_mode="HTML",
+                send_message(chat_id, "🔴 បានបិទ Bot", parse_mode="HTML",
                              reply_to_message_id=False, reply_markup=ADMIN_SETTINGS_REPLY_KEYBOARD)
                 return
             if btn == BTN_MAINT_OFF:
                 MAINTENANCE_MODE = False
                 set_setting('MAINTENANCE_MODE', 'false')
-                send_message(chat_id, "🟢 បានបិទ Maintenance Mode (OFF)", parse_mode="HTML",
+                send_message(chat_id, "🟢 បានបើក Bot", parse_mode="HTML",
                              reply_to_message_id=False, reply_markup=ADMIN_SETTINGS_REPLY_KEYBOARD)
                 return
 
