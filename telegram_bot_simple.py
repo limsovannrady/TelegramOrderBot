@@ -1318,6 +1318,8 @@ BTN_ADMIN_REMOVE    = '➖ ដក Admin'
 BTN_MAINT_ON        = '🔴 បើក Maintenance Mode'
 BTN_MAINT_OFF       = '🟢 បិទ Maintenance Mode'
 BTN_CANCEL_INPUT    = '🚫 បោះបង់'
+BTN_DELETE_CONFIRM  = '✅ បញ្ជាក់លុប'
+BTN_DELETE_CANCEL   = '🚫 បោះបង់ការលុប'
 
 ADMIN_SETTINGS_REPLY_KEYBOARD = {
     'keyboard': [
@@ -2368,24 +2370,65 @@ def handle_message(update):
                 labels = user_sessions[user_id].get('labels', {}) or {}
                 type_name = labels.get(stripped)
                 if type_name and type_name in accounts_data.get('account_types', {}):
-                    with _data_lock:
-                        if user_id in user_sessions:
-                            del user_sessions[user_id]
-                    save_sessions_async()
                     count = len(accounts_data['account_types'].get(type_name, []))
                     price = accounts_data.get('prices', {}).get(type_name, 0)
-                    confirm_cb = f"dtc:{_type_callback_id(type_name)}"
-                    keyboard = {'inline_keyboard': [[
-                        {'text': '✅ បញ្ជាក់លុប', 'callback_data': confirm_cb},
-                        {'text': '🚫 បោះបង់', 'callback_data': 'dtcancel'}
-                    ]]}
+                    with _data_lock:
+                        user_sessions[user_id] = {
+                            'state': 'delete_type_confirm',
+                            'type_name': type_name,
+                        }
+                    save_sessions_async()
+                    confirm_kb = {
+                        'keyboard': [
+                            [{'text': BTN_DELETE_CONFIRM}],
+                            [{'text': BTN_DELETE_CANCEL}],
+                        ],
+                        'resize_keyboard': True,
+                        'is_persistent': True,
+                    }
                     send_message(chat_id,
                         f"⚠️ <b>តើអ្នកពិតជាចង់លុបប្រភេទ Account នេះមែនទេ?</b>\n\n"
                         f"<blockquote>🔹 ប្រភេទ: {html.escape(type_name)}\n🔹 ចំនួន Account: {count}\n🔹 តម្លៃ: ${price}</blockquote>\n\n"
                         f"Account ទាំងអស់ក្នុងប្រភេទនេះនឹងត្រូវបានលុបចោលជាអចិន្ត្រៃយ៍!",
                         parse_mode="HTML", reply_to_message_id=False,
-                        reply_markup=keyboard)
-                    send_admin_settings_menu(chat_id)
+                        reply_markup=confirm_kb)
+                    return
+
+            # Admin: handle confirm/cancel of the delete-type reply keyboard
+            if _state == 'delete_type_confirm':
+                stripped = text.strip()
+                type_name = user_sessions[user_id].get('type_name')
+                if stripped == BTN_DELETE_CONFIRM:
+                    with _data_lock:
+                        if user_id in user_sessions:
+                            del user_sessions[user_id]
+                    save_sessions_async()
+                    if not type_name or type_name not in accounts_data.get('account_types', {}):
+                        send_message(chat_id, "⚠️ <b>ប្រភេទនេះមិនមានទៀតហើយ!</b>",
+                                     parse_mode="HTML", reply_to_message_id=False,
+                                     reply_markup=ADMIN_SETTINGS_REPLY_KEYBOARD)
+                        return
+                    count = len(accounts_data['account_types'].pop(type_name, []))
+                    accounts_data.get('prices', {}).pop(type_name, None)
+                    accounts_data['accounts'] = [
+                        a for a in accounts_data.get('accounts', [])
+                        if a.get('type') != type_name
+                    ]
+                    save_data()
+                    send_message(chat_id,
+                        f"✅ <b>បានលុបប្រភេទ Account <code>{html.escape(type_name)}</code> ចំនួន {count} records ដោយជោគជ័យ!</b>",
+                        parse_mode="HTML", reply_to_message_id=False,
+                        reply_markup=ADMIN_SETTINGS_REPLY_KEYBOARD)
+                    logger.info(f"Admin {user_id} deleted account type '{type_name}' ({count} records)")
+                    return
+                if stripped == BTN_DELETE_CANCEL:
+                    with _data_lock:
+                        if user_id in user_sessions:
+                            del user_sessions[user_id]
+                    save_sessions_async()
+                    send_message(chat_id, "🚫 <b>បានបោះបង់ការលុបប្រភេទ Account</b>",
+                                 parse_mode="HTML", reply_to_message_id=False,
+                                 reply_markup=ADMIN_SETTINGS_REPLY_KEYBOARD)
                     return
 
         # Admin: route reply-keyboard button presses from the settings menu / submenus
