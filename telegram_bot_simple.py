@@ -1257,8 +1257,11 @@ def show_account_selection(chat_id):
             button_text = f"{ACCOUNT_BTN_PREFIX}{account_type}{ACCOUNT_BTN_SUFFIX}{count}"
             buttons.append([{'text': button_text}])
     if not buttons:
-        send_message(chat_id, "_សូមអភ័យទោស អស់ពីស្តុក 🪤_", parse_mode="Markdown", reply_to_message_id=False, reply_markup=MAIN_REPLY_KEYBOARD)
+        send_message(chat_id, "_សូមអភ័យទោស អស់ពីស្តុក 🪤_", parse_mode="Markdown", reply_to_message_id=False, reply_markup=_main_kb(chat_id))
         return
+    # In private chats, chat_id == user_id, so we can check admin status here
+    if is_admin(chat_id):
+        buttons.append([{'text': ADMIN_SETTINGS_BTN}])
     reply_keyboard = {
         'keyboard': buttons,
         'resize_keyboard': True,
