@@ -1384,6 +1384,14 @@ CANCEL_INPUT_KEYBOARD = {
     'is_persistent': True
 }
 
+ADD_ACCOUNT_KEYBOARD = {
+    'keyboard': [
+        [{'text': BTN_BACK_SETTINGS}, {'text': BTN_BACK_HOME}],
+    ],
+    'resize_keyboard': True,
+    'is_persistent': True
+}
+
 # Set of submenu/leaf button labels admins can press; used to keep them out of the
 # unrecognized-command fallback.
 ADMIN_BUTTON_LABELS = {
@@ -1610,7 +1618,7 @@ def _show_maintenance_inline(chat_id):
 
 
 def _start_add_account_flow(chat_id, user_id, message_id):
-    """Start the add-account session (same as /add_account command)."""
+    """Start the add-account session."""
     with _data_lock:
         user_sessions[user_id] = {'state': 'waiting_for_accounts'}
     save_sessions_async()
@@ -1618,7 +1626,8 @@ def _start_add_account_flow(chat_id, user_id, message_id):
         chat_id,
         "*បញ្ចូល Account សម្រាប់លក់ (អ៊ីមែលម្តងមួយបន្ទាត់)៖*\n\n"
         "```\nl1jebywyzos2@10mail.info\nabc123@gmail.com\n```",
-        reply_to_message_id=message_id, parse_mode="Markdown"
+        reply_to_message_id=message_id, parse_mode="Markdown",
+        reply_markup=ADD_ACCOUNT_KEYBOARD
     )
 
 
@@ -2337,10 +2346,20 @@ def handle_message(update):
 
             # ── Top-level settings menu actions ──
             if btn == BTN_BACK_HOME:
+                # Cancel any in-progress admin session (e.g. add-account flow)
+                if user_id in user_sessions:
+                    with _data_lock:
+                        del user_sessions[user_id]
+                    save_sessions_async()
                 send_message(chat_id, "🏠 ម៉ឺនុយដើម", reply_to_message_id=False,
                              reply_markup=_main_kb(user_id))
                 return
             if btn == BTN_BACK_SETTINGS:
+                # Cancel any in-progress admin session before returning to settings
+                if user_id in user_sessions:
+                    with _data_lock:
+                        del user_sessions[user_id]
+                    save_sessions_async()
                 send_admin_settings_menu(chat_id)
                 return
 
