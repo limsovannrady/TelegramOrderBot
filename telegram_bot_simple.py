@@ -1480,8 +1480,16 @@ def _show_users_list_inline(chat_id):
         current += line
     if current:
         chunks.append(current)
-    for chunk in chunks:
-        send_message(chat_id, chunk, parse_mode="HTML", reply_to_message_id=False)
+    back_keyboard = {
+        'keyboard': [[{'text': BTN_BACK_SETTINGS}, {'text': BTN_BACK_HOME}]],
+        'resize_keyboard': True,
+        'is_persistent': True,
+    }
+    last_idx = len(chunks) - 1
+    for i, chunk in enumerate(chunks):
+        rm = back_keyboard if i == last_idx else None
+        send_message(chat_id, chunk, parse_mode="HTML", reply_to_message_id=False,
+                     reply_markup=rm)
 
 
 def _show_delete_type_menu_inline(chat_id, user_id=None):
