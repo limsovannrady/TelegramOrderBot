@@ -1844,6 +1844,7 @@ def _run_broadcast(admin_chat_id, message_text):
                         'text': message_text,
                         'parse_mode': 'HTML',
                         'disable_web_page_preview': 'true',
+                        'protect_content': 'false',
                     },
                     timeout=15
                 )
