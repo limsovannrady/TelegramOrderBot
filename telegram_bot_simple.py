@@ -1277,11 +1277,405 @@ MAIN_REPLY_KEYBOARD = {
     'persistent': True
 }
 
+ADMIN_REPLY_KEYBOARD = {
+    'keyboard': [
+        [{'text': '💵 ទិញគូប៉ុង'}],
+        [{'text': '👤គណនី'}, {'text': '🧾ប្រវត្តិទិញ'}],
+        [{'text': '⚙️កំណត់'}]
+    ],
+    'resize_keyboard': True,
+    'persistent': True
+}
+
+ADMIN_SETTINGS_BTN = '⚙️កំណត់'
+
+def _main_kb(uid):
+    """Return the appropriate main reply keyboard based on whether the user is an admin."""
+    return ADMIN_REPLY_KEYBOARD if is_admin(uid) else MAIN_REPLY_KEYBOARD
+
+ADMIN_SETTINGS_INLINE_KEYBOARD = {
+    'inline_keyboard': [
+        [{'text': '➕ បន្ថែម Account', 'callback_data': 'adm:add_account'},
+         {'text': '🗑 លុបប្រភេទ', 'callback_data': 'adm:delete_type'}],
+        [{'text': '👥 អ្នកប្រើប្រាស់', 'callback_data': 'adm:users'},
+         {'text': '📋 របាយការណ៍ទិញ', 'callback_data': 'adm:buyers'}],
+        [{'text': '💳 ឈ្មោះ Payment', 'callback_data': 'adm:payment'},
+         {'text': '🔑 Bakong Token', 'callback_data': 'adm:bakong'}],
+        [{'text': '📢 Channel ID', 'callback_data': 'adm:channel'},
+         {'text': '👑 គ្រប់គ្រង Admin', 'callback_data': 'adm:admins'}],
+        [{'text': '🛠 Maintenance Mode', 'callback_data': 'adm:maintenance'}],
+        [{'text': '✖️ បិទ', 'callback_data': 'adm:close'}]
+    ]
+}
+
 CONFIRM_REPLY_KEYBOARD = {
     'keyboard': [[{'text': '🚫 បោះបង់'}, {'text': '✅ យល់ព្រម'}]],
     'resize_keyboard': True,
     'one_time_keyboard': True
 }
+
+
+def send_admin_settings_menu(chat_id):
+    """Send the inline settings menu to an admin chat."""
+    send_message(
+        chat_id,
+        "<b>⚙️ ការកំណត់ Admin</b>\n\nសូមជ្រើសរើសប្រតិបត្តិការខាងក្រោម៖",
+        parse_mode="HTML",
+        reply_to_message_id=False,
+        reply_markup=ADMIN_SETTINGS_INLINE_KEYBOARD
+    )
+
+
+def _prompt_admin_input(chat_id, user_id, key, prompt_text):
+    """Put the admin into an input-waiting state and send a prompt message."""
+    with _data_lock:
+        user_sessions[user_id] = {'state': f'admin_input:{key}'}
+    save_sessions_async()
+    send_message(
+        chat_id,
+        prompt_text + "\n\n<i>ផ្ញើ /cancel ឬ ចុច 🚫 បោះបង់ ដើម្បីបោះបង់</i>",
+        parse_mode="HTML",
+        reply_to_message_id=False,
+        reply_markup={'keyboard': [[{'text': '🚫 បោះបង់'}]], 'resize_keyboard': True, 'one_time_keyboard': True}
+    )
+
+
+def _show_users_list_inline(chat_id):
+    """Show the known users list (same logic as the /users command)."""
+    try:
+        backfill_known_user_profiles()
+    except Exception as e:
+        logger.error(f"Inline backfill failed: {e}")
+    try:
+        r = _neon_query(
+            "SELECT user_id, first_name, last_name, username, first_seen "
+            "FROM bot_known_users ORDER BY first_seen DESC"
+        )
+        rows = r.get('rows', [])
+    except Exception as e:
+        logger.error(f"Failed to load known users: {e}")
+        rows = []
+    if not rows:
+        send_message(chat_id, "📭 <b>មិនទាន់មានអ្នកប្រើប្រាស់ទេ។</b>",
+                     parse_mode="HTML", reply_to_message_id=False)
+        return
+    total = len(rows)
+    header = f"👥 <b>អ្នកប្រើប្រាស់សរុប: {total}</b>\n\n"
+    chunks = []
+    current = header
+    for i, row in enumerate(rows, 1):
+        first = row.get('first_name') or ''
+        last = row.get('last_name') or ''
+        full_name = f"{first} {last}".strip() or 'N/A'
+        uname = row.get('username') or ''
+        uname_str = f"@{uname}" if uname else '—'
+        uid = row.get('user_id')
+        line = (
+            f"<b>{i}.</b> {html.escape(full_name)}\n"
+            f"   🔖 {html.escape(uname_str)}\n"
+            f"   🪪 <code>{uid}</code>\n\n"
+        )
+        if len(current) + len(line) > 3800:
+            chunks.append(current)
+            current = ""
+        current += line
+    if current:
+        chunks.append(current)
+    for chunk in chunks:
+        send_message(chat_id, chunk, parse_mode="HTML", reply_to_message_id=False)
+
+
+def _show_delete_type_menu_inline(chat_id):
+    """Show inline menu of account types to delete (same logic as /delete_type)."""
+    types = list(accounts_data.get('account_types', {}).keys())
+    if not types:
+        send_message(chat_id, "⚠️ <b>មិនមានប្រភេទ Account ណាមួយទេ!</b>",
+                     parse_mode="HTML", reply_to_message_id=None)
+        return
+    rows = []
+    for t in types:
+        count = len(accounts_data['account_types'].get(t, []))
+        price = accounts_data.get('prices', {}).get(t, 0)
+        label = f"{_short_label(t)} ({count} pcs · ${price})"
+        cb = f"dts:{_type_callback_id(t)}"
+        rows.append([{'text': label, 'callback_data': cb}])
+    keyboard = {'inline_keyboard': rows}
+    send_message(chat_id, "🗑 <b>ជ្រើសរើសប្រភេទ Account ដែលចង់លុប៖</b>",
+                 parse_mode="HTML", reply_to_message_id=None, reply_markup=keyboard)
+
+
+def _export_buyers_report_inline(chat_id):
+    """Export buyers TXT report (same logic as the /buyers command)."""
+    try:
+        r = _neon_query(
+            "SELECT ph.user_id, ph.account_type, ph.quantity, ph.total_price, "
+            "ph.accounts, ph.purchased_at, "
+            "ku.first_name, ku.last_name, ku.username "
+            "FROM bot_purchase_history ph "
+            "LEFT JOIN bot_known_users ku ON ku.user_id = ph.user_id "
+            "ORDER BY ph.user_id, ph.purchased_at DESC"
+        )
+        rows = r.get('rows', []) or []
+        if not rows:
+            send_message(chat_id, "មិនមានទិន្នន័យ​ទិញ​នៅឡើយ​ទេ។", reply_to_message_id=False)
+            return
+        grouped = {}
+        for row in rows:
+            uid = str(row.get('user_id'))
+            grouped.setdefault(uid, {
+                'first_name': row.get('first_name') or '',
+                'last_name': row.get('last_name') or '',
+                'username': row.get('username') or '',
+                'purchases': []
+            })
+            accounts = row.get('accounts') or []
+            if isinstance(accounts, str):
+                try:
+                    accounts = json.loads(accounts)
+                except Exception:
+                    accounts = []
+            emails = [str(a.get('email', '')) for a in accounts if isinstance(a, dict) and a.get('email')]
+            grouped[uid]['purchases'].append({
+                'type': row.get('account_type') or '',
+                'qty': row.get('quantity') or 0,
+                'price': row.get('total_price') or 0,
+                'when': str(row.get('purchased_at') or ''),
+                'emails': emails
+            })
+        lines = []
+        import datetime as _dt
+        _now_str = _dt.datetime.now(_dt.timezone.utc).strftime('%Y-%m-%d %H:%M:%S UTC')
+        lines.append(f"Buyers Report — generated {_now_str}")
+        lines.append(f"Total buyers: {len(grouped)}")
+        lines.append("=" * 70)
+        total_emails = 0
+        for uid, info in grouped.items():
+            full_name = (info['first_name'] + ' ' + info['last_name']).strip() or '(no name)'
+            uname = f"@{info['username']}" if info['username'] else '—'
+            lines.append("")
+            lines.append(f"User ID : {uid}")
+            lines.append(f"Name    : {full_name}")
+            lines.append(f"Username: {uname}")
+            lines.append(f"Purchases ({len(info['purchases'])}):")
+            for p in info['purchases']:
+                lines.append(f"  [{p['when']}] {p['type']} x{p['qty']} = ${p['price']}")
+                for em in p['emails']:
+                    lines.append(f"      • {em}")
+                    total_emails += 1
+            lines.append("-" * 70)
+        lines.append("")
+        lines.append(f"Total emails delivered: {total_emails}")
+        txt = "\n".join(lines).encode('utf-8')
+        filename = f"buyers_{_dt.datetime.now(_dt.timezone.utc).strftime('%Y%m%d_%H%M%S')}.txt"
+        files = {'document': (filename, txt, 'text/plain')}
+        data = {'chat_id': chat_id, 'caption': f"📋 Buyers report — {len(grouped)} អ្នក​ទិញ, {total_emails} email"}
+        resp = http.post(f"{API_URL}/sendDocument", data=data, files=files, timeout=30)
+        if resp.status_code >= 400 or not resp.json().get('ok'):
+            logger.error(f"sendDocument failed: {resp.text}")
+            send_message(chat_id, "❌ បរាជ័យក្នុងការផ្ញើ​ឯកសារ", reply_to_message_id=False)
+    except Exception as e:
+        logger.error(f"buyers export failed: {e}")
+        send_message(chat_id, f"❌ Error: <code>{html.escape(str(e))}</code>", parse_mode="HTML", reply_to_message_id=False)
+
+
+def _show_admins_inline(chat_id):
+    """Show current admins and add/remove buttons."""
+    extras = sorted(EXTRA_ADMIN_IDS)
+    extras_str = "\n".join(f"• <code>{x}</code>" for x in extras) if extras else "(គ្មាន)"
+    text_msg = (
+        f"👑 <b>Admin បឋម៖</b> <code>{ADMIN_ID}</code>\n\n"
+        f"➕ <b>Admin បន្ថែម៖</b>\n{extras_str}"
+    )
+    kb = {
+        'inline_keyboard': [
+            [{'text': '➕ បន្ថែម Admin', 'callback_data': 'adm:admin_add'},
+             {'text': '➖ ដក Admin', 'callback_data': 'adm:admin_remove'}],
+            [{'text': '↩️ ត្រឡប់', 'callback_data': 'adm:back'}]
+        ]
+    }
+    send_message(chat_id, text_msg, parse_mode="HTML", reply_to_message_id=False, reply_markup=kb)
+
+
+def _show_channel_inline(chat_id):
+    """Show current channel id and edit/clear buttons."""
+    current = CHANNEL_ID if CHANNEL_ID else "(មិនទាន់កំណត់)"
+    text_msg = f"📢 <b>Channel ID បច្ចុប្បន្ន៖</b>\n<code>{html.escape(str(current))}</code>"
+    kb = {
+        'inline_keyboard': [
+            [{'text': '✏️ ប្តូរ Channel ID', 'callback_data': 'adm:channel_set'},
+             {'text': '🗑 លុប Channel ID', 'callback_data': 'adm:channel_clear'}],
+            [{'text': '↩️ ត្រឡប់', 'callback_data': 'adm:back'}]
+        ]
+    }
+    send_message(chat_id, text_msg, parse_mode="HTML", reply_to_message_id=False, reply_markup=kb)
+
+
+def _show_payment_inline(chat_id):
+    """Show current payment name with edit button."""
+    text_msg = f"💳 <b>ឈ្មោះ Payment បច្ចុប្បន្ន៖</b>\n<code>{html.escape(PAYMENT_NAME or '(មិនទាន់កំណត់)')}</code>"
+    kb = {
+        'inline_keyboard': [
+            [{'text': '✏️ ប្តូរឈ្មោះ Payment', 'callback_data': 'adm:payment_set'}],
+            [{'text': '↩️ ត្រឡប់', 'callback_data': 'adm:back'}]
+        ]
+    }
+    send_message(chat_id, text_msg, parse_mode="HTML", reply_to_message_id=False, reply_markup=kb)
+
+
+def _show_bakong_inline(chat_id):
+    """Show masked bakong token with edit button."""
+    masked = (BAKONG_TOKEN[:10] + "…") if BAKONG_TOKEN else "(មិនទាន់កំណត់)"
+    text_msg = f"🔑 <b>Bakong Token បច្ចុប្បន្ន៖</b>\n<code>{html.escape(masked)}</code>"
+    kb = {
+        'inline_keyboard': [
+            [{'text': '✏️ ប្តូរ Bakong Token', 'callback_data': 'adm:bakong_set'}],
+            [{'text': '↩️ ត្រឡប់', 'callback_data': 'adm:back'}]
+        ]
+    }
+    send_message(chat_id, text_msg, parse_mode="HTML", reply_to_message_id=False, reply_markup=kb)
+
+
+def _show_maintenance_inline(chat_id):
+    """Show maintenance mode status with toggle buttons."""
+    status = "🔴 ON" if MAINTENANCE_MODE else "🟢 OFF"
+    text_msg = f"🛠 <b>Maintenance Mode បច្ចុប្បន្ន៖</b> {status}"
+    kb = {
+        'inline_keyboard': [
+            [{'text': '🟢 បើកដំណើរការ (OFF)', 'callback_data': 'adm:maint_off'},
+             {'text': '🔴 បិទដំណើរការ (ON)', 'callback_data': 'adm:maint_on'}],
+            [{'text': '↩️ ត្រឡប់', 'callback_data': 'adm:back'}]
+        ]
+    }
+    send_message(chat_id, text_msg, parse_mode="HTML", reply_to_message_id=False, reply_markup=kb)
+
+
+def _start_add_account_flow(chat_id, user_id, message_id):
+    """Start the add-account session (same as /add_account command)."""
+    with _data_lock:
+        user_sessions[user_id] = {'state': 'waiting_for_accounts'}
+    save_sessions_async()
+    send_message(
+        chat_id,
+        "*បញ្ចូល Account សម្រាប់លក់ (អ៊ីមែលម្តងមួយបន្ទាត់)៖*\n\n"
+        "```\nl1jebywyzos2@10mail.info\nabc123@gmail.com\n```",
+        reply_to_message_id=message_id, parse_mode="Markdown"
+    )
+
+
+def _handle_admin_settings_input(chat_id, user_id, message_id, key, text):
+    """Apply pending admin-settings input from the keyboard menu.
+
+    Returns True if the input was consumed, False otherwise.
+    """
+    global PAYMENT_NAME, BAKONG_TOKEN, khqr_client, CHANNEL_ID, EXTRA_ADMIN_IDS
+
+    raw = (text or '').strip()
+    cancel_words = {'/cancel', 'cancel', 'បោះបង់', '🚫 បោះបង់'}
+    if raw in cancel_words or raw.lower() == '/cancel':
+        with _data_lock:
+            if user_id in user_sessions:
+                del user_sessions[user_id]
+        save_sessions_async()
+        send_message(chat_id, "🚫 បានបោះបង់ការកំណត់", reply_to_message_id=False, reply_markup=_main_kb(user_id))
+        return True
+
+    if key == 'payment':
+        if not raw:
+            send_message(chat_id, "សូមផ្ញើឈ្មោះ Payment ថ្មី (ឬ /cancel)", reply_to_message_id=False)
+            return True
+        PAYMENT_NAME = raw
+        set_setting('PAYMENT_NAME', PAYMENT_NAME)
+        with _data_lock:
+            if user_id in user_sessions:
+                del user_sessions[user_id]
+        save_sessions_async()
+        send_message(chat_id, f"✅ បានប្តូរឈ្មោះ Payment ទៅជា <b>{html.escape(PAYMENT_NAME)}</b>",
+                     parse_mode="HTML", reply_to_message_id=False, reply_markup=_main_kb(user_id))
+        return True
+
+    if key == 'bakong':
+        if not raw:
+            send_message(chat_id, "សូមផ្ញើ Bakong token ថ្មី (ឬ /cancel)", reply_to_message_id=False)
+            return True
+        try:
+            new_client = KHQR(raw)
+        except Exception as e:
+            send_message(chat_id, f"❌ Token មិនត្រឹមត្រូវ៖ <code>{html.escape(str(e))}</code>",
+                         parse_mode="HTML", reply_to_message_id=False)
+            return True
+        BAKONG_TOKEN = raw
+        khqr_client = new_client
+        set_setting('BAKONG_TOKEN', raw)
+        delete_message_async(chat_id, message_id)
+        with _data_lock:
+            if user_id in user_sessions:
+                del user_sessions[user_id]
+        save_sessions_async()
+        send_message(
+            chat_id,
+            f"✅ បានប្តូរ Bakong token (Prefix៖ <code>{html.escape(raw[:10])}…</code>)",
+            parse_mode="HTML", reply_to_message_id=False, reply_markup=_main_kb(user_id)
+        )
+        return True
+
+    if key == 'channel':
+        if not raw:
+            send_message(chat_id, "សូមផ្ញើ Channel ID ថ្មី (ឧ. <code>-1001234567890</code>) ឬ <code>off</code> ដើម្បីបិទ",
+                         parse_mode="HTML", reply_to_message_id=False)
+            return True
+        if raw.lower() in ('off', 'none', 'clear', 'delete', 'remove'):
+            CHANNEL_ID = ""
+            set_setting('TELEGRAM_CHANNEL_ID', '')
+            with _data_lock:
+                if user_id in user_sessions:
+                    del user_sessions[user_id]
+            save_sessions_async()
+            send_message(chat_id, "✅ បានលុប Channel ID", reply_to_message_id=False, reply_markup=_main_kb(user_id))
+            return True
+        CHANNEL_ID = raw
+        set_setting('TELEGRAM_CHANNEL_ID', raw)
+        with _data_lock:
+            if user_id in user_sessions:
+                del user_sessions[user_id]
+        save_sessions_async()
+        send_message(
+            chat_id,
+            f"✅ បានកំណត់ Channel ID ទៅជា <code>{html.escape(raw)}</code>\n"
+            f"សូមប្រាកដថា bot ជា admin/member ក្នុង channel នោះ។",
+            parse_mode="HTML", reply_to_message_id=False, reply_markup=_main_kb(user_id)
+        )
+        return True
+
+    if key in ('admin_add', 'admin_remove'):
+        action = 'add' if key == 'admin_add' else 'remove'
+        try:
+            target_id = int(raw)
+        except ValueError:
+            send_message(chat_id, "❌ user_id ត្រូវតែជាលេខ (ឬ /cancel)", reply_to_message_id=False)
+            return True
+        if target_id == ADMIN_ID:
+            send_message(chat_id, "ℹ️ Admin បឋមមិនអាចលុប/បន្ថែមបានទេ។", reply_to_message_id=False, reply_markup=_main_kb(user_id))
+            with _data_lock:
+                if user_id in user_sessions:
+                    del user_sessions[user_id]
+            save_sessions_async()
+            return True
+        if action == 'add':
+            EXTRA_ADMIN_IDS.add(target_id)
+            msg = f"✅ បានបន្ថែម <code>{target_id}</code> ជា admin"
+        else:
+            EXTRA_ADMIN_IDS.discard(target_id)
+            msg = f"✅ បានដក <code>{target_id}</code> ចេញពី admin"
+        set_setting('EXTRA_ADMIN_IDS', json.dumps(sorted(EXTRA_ADMIN_IDS)))
+        with _data_lock:
+            if user_id in user_sessions:
+                del user_sessions[user_id]
+        save_sessions_async()
+        send_message(chat_id, msg, parse_mode="HTML", reply_to_message_id=False, reply_markup=_main_kb(user_id))
+        return True
+
+    return False
+
 
 def _send_order_summary(chat_id, user_id, session):
     """Send order summary with reply keyboard. Stores summary_message_id in session."""
@@ -1494,6 +1888,122 @@ def handle_callback_query(update):
                          parse_mode="HTML", reply_to_message_id=None)
             return
 
+        # Admin: settings menu actions (⚙️កំណត់ keyboard)
+        elif callback_data.startswith('adm:') and is_admin(user_id):
+            global PAYMENT_NAME, BAKONG_TOKEN, khqr_client, CHANNEL_ID, EXTRA_ADMIN_IDS, MAINTENANCE_MODE
+            action = callback_data[4:]
+            answer_callback(callback_query['id'])
+            menu_msg_id = callback_query['message']['message_id']
+
+            if action == 'close':
+                delete_message_async(chat_id, menu_msg_id)
+                return
+
+            if action == 'back':
+                delete_message_async(chat_id, menu_msg_id)
+                send_admin_settings_menu(chat_id)
+                return
+
+            if action == 'add_account':
+                delete_message_async(chat_id, menu_msg_id)
+                _start_add_account_flow(chat_id, user_id, None)
+                return
+
+            if action == 'delete_type':
+                delete_message_async(chat_id, menu_msg_id)
+                _show_delete_type_menu_inline(chat_id)
+                return
+
+            if action == 'users':
+                delete_message_async(chat_id, menu_msg_id)
+                _show_users_list_inline(chat_id)
+                return
+
+            if action == 'buyers':
+                delete_message_async(chat_id, menu_msg_id)
+                _export_buyers_report_inline(chat_id)
+                return
+
+            if action == 'payment':
+                delete_message_async(chat_id, menu_msg_id)
+                _show_payment_inline(chat_id)
+                return
+
+            if action == 'payment_set':
+                delete_message_async(chat_id, menu_msg_id)
+                _prompt_admin_input(chat_id, user_id, 'payment',
+                                    f"💳 ឈ្មោះ Payment បច្ចុប្បន្ន៖ <b>{html.escape(PAYMENT_NAME or '(មិនទាន់កំណត់)')}</b>\n\nសូមផ្ញើឈ្មោះ Payment ថ្មី៖")
+                return
+
+            if action == 'bakong':
+                delete_message_async(chat_id, menu_msg_id)
+                _show_bakong_inline(chat_id)
+                return
+
+            if action == 'bakong_set':
+                delete_message_async(chat_id, menu_msg_id)
+                _prompt_admin_input(chat_id, user_id, 'bakong',
+                                    "🔑 សូមផ្ញើ Bakong Token ថ្មី៖\n<i>(សារនឹងត្រូវលុបដោយស្វ័យប្រវត្តិ)</i>")
+                return
+
+            if action == 'channel':
+                delete_message_async(chat_id, menu_msg_id)
+                _show_channel_inline(chat_id)
+                return
+
+            if action == 'channel_set':
+                delete_message_async(chat_id, menu_msg_id)
+                _prompt_admin_input(chat_id, user_id, 'channel',
+                                    "📢 សូមផ្ញើ Channel ID ថ្មី (ឧ. <code>-1001234567890</code>)\nឬ <code>off</code> ដើម្បីលុប")
+                return
+
+            if action == 'channel_clear':
+                CHANNEL_ID = ""
+                set_setting('TELEGRAM_CHANNEL_ID', '')
+                delete_message_async(chat_id, menu_msg_id)
+                send_message(chat_id, "✅ បានលុប Channel ID", reply_to_message_id=False, reply_markup=_main_kb(user_id))
+                return
+
+            if action == 'admins':
+                delete_message_async(chat_id, menu_msg_id)
+                _show_admins_inline(chat_id)
+                return
+
+            if action == 'admin_add':
+                delete_message_async(chat_id, menu_msg_id)
+                _prompt_admin_input(chat_id, user_id, 'admin_add',
+                                    "👑 សូមផ្ញើ user_id របស់អ្នកដែលចង់បន្ថែមជា admin (ជាលេខ)៖")
+                return
+
+            if action == 'admin_remove':
+                delete_message_async(chat_id, menu_msg_id)
+                _prompt_admin_input(chat_id, user_id, 'admin_remove',
+                                    "👑 សូមផ្ញើ user_id របស់ admin ដែលចង់ដក (ជាលេខ)៖")
+                return
+
+            if action == 'maintenance':
+                delete_message_async(chat_id, menu_msg_id)
+                _show_maintenance_inline(chat_id)
+                return
+
+            if action == 'maint_on':
+                MAINTENANCE_MODE = True
+                set_setting('MAINTENANCE_MODE', 'true')
+                delete_message_async(chat_id, menu_msg_id)
+                send_message(chat_id, "✅ <b>Maintenance mode ON</b>", parse_mode="HTML",
+                             reply_to_message_id=False, reply_markup=_main_kb(user_id))
+                return
+
+            if action == 'maint_off':
+                MAINTENANCE_MODE = False
+                set_setting('MAINTENANCE_MODE', 'false')
+                delete_message_async(chat_id, menu_msg_id)
+                send_message(chat_id, "✅ <b>Maintenance mode OFF</b> — Bot ដំណើរការធម្មតាហើយ",
+                             parse_mode="HTML", reply_to_message_id=False, reply_markup=_main_kb(user_id))
+                return
+
+            return
+
         # Handle cancel buy — cancel from summary screen (before QR)
         elif callback_data == 'cancel_buy':
             answer_callback(callback_query['id'])
@@ -1503,7 +2013,7 @@ def handle_callback_query(update):
             save_sessions_async()
             summary_message_id = callback_query['message']['message_id']
             delete_message_async(chat_id, summary_message_id)
-            send_message(chat_id, "🚫 *បានបោះបង់ការទិញ*", parse_mode="Markdown", reply_to_message_id=False, reply_markup=MAIN_REPLY_KEYBOARD)
+            send_message(chat_id, "🚫 *បានបោះបង់ការទិញ*", parse_mode="Markdown", reply_to_message_id=False, reply_markup=_main_kb(user_id))
             return
 
         # Handle quantity number button press
@@ -1579,7 +2089,7 @@ def handle_callback_query(update):
                     del user_sessions[user_id]
             save_sessions_async()
             delete_pending_payment_async(user_id)
-            send_message(chat_id, "🚫 *បានបោះបង់ការទិញ*", parse_mode="Markdown", reply_to_message_id=False, reply_markup=MAIN_REPLY_KEYBOARD)
+            send_message(chat_id, "🚫 *បានបោះបង់ការទិញ*", parse_mode="Markdown", reply_to_message_id=False, reply_markup=_main_kb(user_id))
 
     except Exception as e:
         logger.error(f"Error handling callback query: {e}")
@@ -1637,7 +2147,7 @@ def handle_message(update):
             try:
                 user_display_name = user.get('last_name') or user.get('first_name', '')
                 welcome_caption = f'<tg-emoji emoji-id="5967385500447675533">🎉</tg-emoji> <b>សូមស្វាគមន៍ {user_display_name}</b>'
-                send_start_banner(chat_id, caption=welcome_caption, parse_mode='HTML', message_effect_id='5046509860389126442', reply_markup=MAIN_REPLY_KEYBOARD)
+                send_start_banner(chat_id, caption=welcome_caption, parse_mode='HTML', message_effect_id='5046509860389126442', reply_markup=_main_kb(user_id))
             except Exception as e:
                 logger.error(f"Failed to send banner image: {e}")
             return
@@ -1671,7 +2181,7 @@ def handle_message(update):
                     send_message(chat_id, reply_message, reply_to_message_id=False, parse_mode="Markdown", reply_markup=qty_keyboard)
                     logger.info(f"User {user_id} selected account type '{account_type}' via reply keyboard")
                 else:
-                    send_message(chat_id, f"សូមអភ័យទោស Account {account_type} អស់ពីស្តុក 🪤", reply_markup=MAIN_REPLY_KEYBOARD)
+                    send_message(chat_id, f"សូមអភ័យទោស Account {account_type} អស់ពីស្តុក 🪤", reply_markup=_main_kb(user_id))
                     show_account_selection_local()
             else:
                 show_account_selection_local()
@@ -1683,7 +2193,7 @@ def handle_message(update):
                 f"👤 <b>ឈ្មោះ:</b> {full_name}\n"
                 f'<tg-emoji emoji-id="5422683699130933153">🪪</tg-emoji> <b>ID:</b> <code>{user_id}</code>'
             )
-            send_message(chat_id, account_info, parse_mode="HTML", reply_markup=MAIN_REPLY_KEYBOARD)
+            send_message(chat_id, account_info, parse_mode="HTML", reply_markup=_main_kb(user_id))
             return
 
         if text.strip() == '🧾ប្រវត្តិទិញ':
@@ -1724,7 +2234,25 @@ def handle_message(update):
                     )
                     send_message(chat_id, msg, parse_mode="HTML", reply_to_message_id=False)
             return
-        
+
+        # Admin: open settings menu via the ⚙️កំណត់ keyboard button
+        if text.strip() == ADMIN_SETTINGS_BTN and is_admin(user_id):
+            # Clear any leftover admin_input session so it doesn't capture this press
+            if user_id in user_sessions and str(user_sessions[user_id].get('state', '')).startswith('admin_input:'):
+                with _data_lock:
+                    del user_sessions[user_id]
+                save_sessions_async()
+            send_admin_settings_menu(chat_id)
+            return
+
+        # Admin: handle pending input from the settings menu (payment, bakong, channel, admin add/remove)
+        if is_admin(user_id) and user_id in user_sessions:
+            _state = str(user_sessions[user_id].get('state', ''))
+            if _state.startswith('admin_input:'):
+                _key = _state.split(':', 1)[1]
+                if _handle_admin_settings_input(chat_id, user_id, message_id, _key, text):
+                    return
+
         # Check if user is in a purchase session (for all users including admin)
         if user_id in user_sessions:
             session = user_sessions[user_id]
@@ -1785,7 +2313,7 @@ def handle_message(update):
                         md5_hash = md5_or_err
                         session['md5_hash'] = md5_hash
                         session['qr_sent_at'] = time.time()
-                        dot_resp = send_sticker(chat_id, "CAACAgUAAxkBAAILvGnnaWwK-AXFeING4WOtIIKmoFYqAAIVAAMxIPsrpHGBfRB524Y7BA", reply_markup=MAIN_REPLY_KEYBOARD)
+                        dot_resp = send_sticker(chat_id, "CAACAgUAAxkBAAILvGnnaWwK-AXFeING4WOtIIKmoFYqAAIVAAMxIPsrpHGBfRB524Y7BA", reply_markup=_main_kb(user_id))
                         if dot_resp and dot_resp.get('result'):
                             session['dot_message_id'] = dot_resp['result']['message_id']
                         photo_resp = send_photo_bytes(chat_id, img_bytes, reply_markup=CHECK_PAYMENT_KEYBOARD)
@@ -1815,7 +2343,7 @@ def handle_message(update):
                         if user_id in user_sessions:
                             del user_sessions[user_id]
                     save_sessions_async()
-                    send_message(chat_id, "🚫 *បានបោះបង់ការទិញ*", parse_mode="Markdown", reply_to_message_id=False, reply_markup=MAIN_REPLY_KEYBOARD)
+                    send_message(chat_id, "🚫 *បានបោះបង់ការទិញ*", parse_mode="Markdown", reply_to_message_id=False, reply_markup=_main_kb(user_id))
                     return
 
         # Handle non-admin users
@@ -2316,7 +2844,7 @@ def deliver_accounts(chat_id, user_id, session, payment_data=None, user_name='')
             accounts_message += f"{account.get('phone', '')} | {account.get('password', '')}\n"
     accounts_message += f"\n<i>សូមអរគុណសម្រាប់ការទិញ <tg-emoji emoji-id=\"5897474556834091884\">🙏</tg-emoji></i>"
 
-    send_message(chat_id, accounts_message, parse_mode="HTML", message_effect_id="5046509860389126442", reply_markup=MAIN_REPLY_KEYBOARD)
+    send_message(chat_id, accounts_message, parse_mode="HTML", message_effect_id="5046509860389126442", reply_markup=_main_kb(user_id))
 
     # Notify admin/channel about successful payment
     try:
