@@ -1800,7 +1800,7 @@ def _handle_admin_settings_input(chat_id, user_id, message_id, key, text):
         return True
 
     if key == 'broadcast':
-        if not raw:
+        if not message_id:
             send_message(chat_id, "សូមផ្ញើ​សារ​ដែល​ចង់​ផ្សាយ (ឬចុច 🚫 បោះបង់)",
                          reply_to_message_id=False)
             return True
@@ -1810,14 +1810,15 @@ def _handle_admin_settings_input(chat_id, user_id, message_id, key, text):
         save_sessions_async()
         send_message(chat_id, "📢 កំពុង​ផ្សាយ​សារ ... សូមរង់ចាំ",
                      reply_to_message_id=False, reply_markup=ADMIN_SETTINGS_REPLY_KEYBOARD)
-        background_pool.submit(_run_broadcast, chat_id, raw)
+        background_pool.submit(_run_broadcast, chat_id, message_id)
         return True
 
     return False
 
 
-def _run_broadcast(admin_chat_id, message_text):
-    """Send the given text message to every known user. Runs in background."""
+def _run_broadcast(admin_chat_id, source_message_id):
+    """Copy the admin's original message to every known user, preserving its
+    original formatting (entities, photos, captions, etc.). Runs in background."""
     try:
         try:
             r = _neon_query("SELECT user_id FROM bot_known_users")
@@ -1838,12 +1839,11 @@ def _run_broadcast(admin_chat_id, message_text):
                 continue
             try:
                 resp = http.post(
-                    f"{API_URL}/sendMessage",
+                    f"{API_URL}/copyMessage",
                     data={
                         'chat_id': uid,
-                        'text': message_text,
-                        'parse_mode': 'HTML',
-                        'disable_web_page_preview': 'true',
+                        'from_chat_id': admin_chat_id,
+                        'message_id': source_message_id,
                         'protect_content': 'false',
                     },
                     timeout=15
@@ -2581,7 +2581,8 @@ def handle_message(update):
             if btn == BTN_BROADCAST:
                 _prompt_admin_input(chat_id, user_id, 'broadcast',
                     "📢 សូមផ្ញើ​សារ​ដែល​ចង់​ផ្សាយ​ទៅ​អ្នក​ប្រើ​ប្រាស់​ទាំង​អស់៖\n\n"
-                    "<i>(អាច​ប្រើ HTML formatting ដូច​ជា &lt;b&gt;, &lt;i&gt;, &lt;code&gt;)</i>")
+                    "<i>សារ​នឹង​ត្រូវ​បាន​បង្ហោះ​តាម​ទម្រង់​ដើម​ដូច​អ្នក​សរសេរ "
+                    "(អត្ថបទ រូបភាព វីដេអូ ឯកសារ ឬ​ការ​តុបតែង​អក្សរ​ផ្សេងៗ)។</i>")
                 return
 
             # ── Submenu leaf actions ──
