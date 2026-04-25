@@ -1293,19 +1293,104 @@ def _main_kb(uid):
     """Return the appropriate main reply keyboard based on whether the user is an admin."""
     return ADMIN_REPLY_KEYBOARD if is_admin(uid) else MAIN_REPLY_KEYBOARD
 
-ADMIN_SETTINGS_INLINE_KEYBOARD = {
-    'inline_keyboard': [
-        [{'text': '➕ បន្ថែម Account', 'callback_data': 'adm:add_account'},
-         {'text': '🗑 លុបប្រភេទ', 'callback_data': 'adm:delete_type'}],
-        [{'text': '👥 អ្នកប្រើប្រាស់', 'callback_data': 'adm:users'},
-         {'text': '📋 របាយការណ៍ទិញ', 'callback_data': 'adm:buyers'}],
-        [{'text': '💳 ឈ្មោះ Payment', 'callback_data': 'adm:payment'},
-         {'text': '🔑 Bakong Token', 'callback_data': 'adm:bakong'}],
-        [{'text': '📢 Channel ID', 'callback_data': 'adm:channel'},
-         {'text': '👑 គ្រប់គ្រង Admin', 'callback_data': 'adm:admins'}],
-        [{'text': '🛠 Maintenance Mode', 'callback_data': 'adm:maintenance'}],
-        [{'text': '✖️ បិទ', 'callback_data': 'adm:close'}]
-    ]
+# ── Admin settings reply-keyboard buttons ──
+BTN_ADD_ACCOUNT     = '➕ បន្ថែម Account'
+BTN_DELETE_TYPE     = '🗑 លុបប្រភេទ'
+BTN_USERS           = '👥 អ្នកប្រើប្រាស់'
+BTN_BUYERS          = '📋 របាយការណ៍ទិញ'
+BTN_PAYMENT         = '💳 ឈ្មោះ Payment'
+BTN_BAKONG          = '🔑 Bakong Token'
+BTN_CHANNEL         = '📢 Channel ID'
+BTN_ADMINS          = '👑 គ្រប់គ្រង Admin'
+BTN_MAINTENANCE     = '🛠 Maintenance Mode'
+BTN_BACK_HOME       = '🏠 ត្រឡប់ទៅម៉ឺនុយដើម'
+BTN_BACK_SETTINGS   = '↩️ ត្រឡប់ទៅកំណត់'
+
+BTN_PAYMENT_EDIT    = '✏️ ប្តូរឈ្មោះ Payment'
+BTN_BAKONG_EDIT     = '✏️ ប្តូរ Bakong Token'
+BTN_CHANNEL_EDIT    = '✏️ ប្តូរ Channel ID'
+BTN_CHANNEL_CLEAR   = '🗑 លុប Channel ID'
+BTN_ADMIN_ADD       = '➕ បន្ថែម Admin'
+BTN_ADMIN_REMOVE    = '➖ ដក Admin'
+BTN_MAINT_ON        = '🔴 បើក Maintenance Mode'
+BTN_MAINT_OFF       = '🟢 បិទ Maintenance Mode'
+BTN_CANCEL_INPUT    = '🚫 បោះបង់'
+
+ADMIN_SETTINGS_REPLY_KEYBOARD = {
+    'keyboard': [
+        [{'text': BTN_ADD_ACCOUNT}, {'text': BTN_DELETE_TYPE}],
+        [{'text': BTN_USERS}, {'text': BTN_BUYERS}],
+        [{'text': BTN_PAYMENT}, {'text': BTN_BAKONG}],
+        [{'text': BTN_CHANNEL}, {'text': BTN_ADMINS}],
+        [{'text': BTN_MAINTENANCE}],
+        [{'text': BTN_BACK_HOME}],
+    ],
+    'resize_keyboard': True,
+    'persistent': True
+}
+
+PAYMENT_SUBMENU_KEYBOARD = {
+    'keyboard': [
+        [{'text': BTN_PAYMENT_EDIT}],
+        [{'text': BTN_BACK_SETTINGS}],
+    ],
+    'resize_keyboard': True,
+    'persistent': True
+}
+
+BAKONG_SUBMENU_KEYBOARD = {
+    'keyboard': [
+        [{'text': BTN_BAKONG_EDIT}],
+        [{'text': BTN_BACK_SETTINGS}],
+    ],
+    'resize_keyboard': True,
+    'persistent': True
+}
+
+CHANNEL_SUBMENU_KEYBOARD = {
+    'keyboard': [
+        [{'text': BTN_CHANNEL_EDIT}, {'text': BTN_CHANNEL_CLEAR}],
+        [{'text': BTN_BACK_SETTINGS}],
+    ],
+    'resize_keyboard': True,
+    'persistent': True
+}
+
+ADMINS_SUBMENU_KEYBOARD = {
+    'keyboard': [
+        [{'text': BTN_ADMIN_ADD}, {'text': BTN_ADMIN_REMOVE}],
+        [{'text': BTN_BACK_SETTINGS}],
+    ],
+    'resize_keyboard': True,
+    'persistent': True
+}
+
+MAINTENANCE_SUBMENU_KEYBOARD = {
+    'keyboard': [
+        [{'text': BTN_MAINT_ON}, {'text': BTN_MAINT_OFF}],
+        [{'text': BTN_BACK_SETTINGS}],
+    ],
+    'resize_keyboard': True,
+    'persistent': True
+}
+
+CANCEL_INPUT_KEYBOARD = {
+    'keyboard': [[{'text': BTN_CANCEL_INPUT}]],
+    'resize_keyboard': True,
+    'one_time_keyboard': False,
+    'persistent': True
+}
+
+# Set of submenu/leaf button labels admins can press; used to keep them out of the
+# unrecognized-command fallback.
+ADMIN_BUTTON_LABELS = {
+    BTN_ADD_ACCOUNT, BTN_DELETE_TYPE, BTN_USERS, BTN_BUYERS,
+    BTN_PAYMENT, BTN_BAKONG, BTN_CHANNEL, BTN_ADMINS, BTN_MAINTENANCE,
+    BTN_BACK_HOME, BTN_BACK_SETTINGS,
+    BTN_PAYMENT_EDIT, BTN_BAKONG_EDIT,
+    BTN_CHANNEL_EDIT, BTN_CHANNEL_CLEAR,
+    BTN_ADMIN_ADD, BTN_ADMIN_REMOVE,
+    BTN_MAINT_ON, BTN_MAINT_OFF,
 }
 
 CONFIRM_REPLY_KEYBOARD = {
@@ -1316,13 +1401,13 @@ CONFIRM_REPLY_KEYBOARD = {
 
 
 def send_admin_settings_menu(chat_id):
-    """Send the inline settings menu to an admin chat."""
+    """Open the admin settings reply keyboard."""
     send_message(
         chat_id,
         "<b>⚙️ ការកំណត់ Admin</b>\n\nសូមជ្រើសរើសប្រតិបត្តិការខាងក្រោម៖",
         parse_mode="HTML",
         reply_to_message_id=False,
-        reply_markup=ADMIN_SETTINGS_INLINE_KEYBOARD
+        reply_markup=ADMIN_SETTINGS_REPLY_KEYBOARD
     )
 
 
@@ -1336,7 +1421,7 @@ def _prompt_admin_input(chat_id, user_id, key, prompt_text):
         prompt_text + "\n\n<i>ផ្ញើ /cancel ឬ ចុច 🚫 បោះបង់ ដើម្បីបោះបង់</i>",
         parse_mode="HTML",
         reply_to_message_id=False,
-        reply_markup={'keyboard': [[{'text': '🚫 បោះបង់'}]], 'resize_keyboard': True, 'one_time_keyboard': True}
+        reply_markup=CANCEL_INPUT_KEYBOARD
     )
 
 
@@ -1479,74 +1564,46 @@ def _export_buyers_report_inline(chat_id):
 
 
 def _show_admins_inline(chat_id):
-    """Show current admins and add/remove buttons."""
+    """Show current admins with the admins reply submenu."""
     extras = sorted(EXTRA_ADMIN_IDS)
     extras_str = "\n".join(f"• <code>{x}</code>" for x in extras) if extras else "(គ្មាន)"
     text_msg = (
         f"👑 <b>Admin បឋម៖</b> <code>{ADMIN_ID}</code>\n\n"
         f"➕ <b>Admin បន្ថែម៖</b>\n{extras_str}"
     )
-    kb = {
-        'inline_keyboard': [
-            [{'text': '➕ បន្ថែម Admin', 'callback_data': 'adm:admin_add'},
-             {'text': '➖ ដក Admin', 'callback_data': 'adm:admin_remove'}],
-            [{'text': '↩️ ត្រឡប់', 'callback_data': 'adm:back'}]
-        ]
-    }
-    send_message(chat_id, text_msg, parse_mode="HTML", reply_to_message_id=False, reply_markup=kb)
+    send_message(chat_id, text_msg, parse_mode="HTML", reply_to_message_id=False,
+                 reply_markup=ADMINS_SUBMENU_KEYBOARD)
 
 
 def _show_channel_inline(chat_id):
-    """Show current channel id and edit/clear buttons."""
+    """Show current channel id with the channel reply submenu."""
     current = CHANNEL_ID if CHANNEL_ID else "(មិនទាន់កំណត់)"
     text_msg = f"📢 <b>Channel ID បច្ចុប្បន្ន៖</b>\n<code>{html.escape(str(current))}</code>"
-    kb = {
-        'inline_keyboard': [
-            [{'text': '✏️ ប្តូរ Channel ID', 'callback_data': 'adm:channel_set'},
-             {'text': '🗑 លុប Channel ID', 'callback_data': 'adm:channel_clear'}],
-            [{'text': '↩️ ត្រឡប់', 'callback_data': 'adm:back'}]
-        ]
-    }
-    send_message(chat_id, text_msg, parse_mode="HTML", reply_to_message_id=False, reply_markup=kb)
+    send_message(chat_id, text_msg, parse_mode="HTML", reply_to_message_id=False,
+                 reply_markup=CHANNEL_SUBMENU_KEYBOARD)
 
 
 def _show_payment_inline(chat_id):
-    """Show current payment name with edit button."""
+    """Show current payment name with the payment reply submenu."""
     text_msg = f"💳 <b>ឈ្មោះ Payment បច្ចុប្បន្ន៖</b>\n<code>{html.escape(PAYMENT_NAME or '(មិនទាន់កំណត់)')}</code>"
-    kb = {
-        'inline_keyboard': [
-            [{'text': '✏️ ប្តូរឈ្មោះ Payment', 'callback_data': 'adm:payment_set'}],
-            [{'text': '↩️ ត្រឡប់', 'callback_data': 'adm:back'}]
-        ]
-    }
-    send_message(chat_id, text_msg, parse_mode="HTML", reply_to_message_id=False, reply_markup=kb)
+    send_message(chat_id, text_msg, parse_mode="HTML", reply_to_message_id=False,
+                 reply_markup=PAYMENT_SUBMENU_KEYBOARD)
 
 
 def _show_bakong_inline(chat_id):
-    """Show masked bakong token with edit button."""
+    """Show masked bakong token with the bakong reply submenu."""
     masked = (BAKONG_TOKEN[:10] + "…") if BAKONG_TOKEN else "(មិនទាន់កំណត់)"
     text_msg = f"🔑 <b>Bakong Token បច្ចុប្បន្ន៖</b>\n<code>{html.escape(masked)}</code>"
-    kb = {
-        'inline_keyboard': [
-            [{'text': '✏️ ប្តូរ Bakong Token', 'callback_data': 'adm:bakong_set'}],
-            [{'text': '↩️ ត្រឡប់', 'callback_data': 'adm:back'}]
-        ]
-    }
-    send_message(chat_id, text_msg, parse_mode="HTML", reply_to_message_id=False, reply_markup=kb)
+    send_message(chat_id, text_msg, parse_mode="HTML", reply_to_message_id=False,
+                 reply_markup=BAKONG_SUBMENU_KEYBOARD)
 
 
 def _show_maintenance_inline(chat_id):
-    """Show maintenance mode status with toggle buttons."""
+    """Show maintenance mode status with the maintenance reply submenu."""
     status = "🔴 ON" if MAINTENANCE_MODE else "🟢 OFF"
     text_msg = f"🛠 <b>Maintenance Mode បច្ចុប្បន្ន៖</b> {status}"
-    kb = {
-        'inline_keyboard': [
-            [{'text': '🟢 បើកដំណើរការ (OFF)', 'callback_data': 'adm:maint_off'},
-             {'text': '🔴 បិទដំណើរការ (ON)', 'callback_data': 'adm:maint_on'}],
-            [{'text': '↩️ ត្រឡប់', 'callback_data': 'adm:back'}]
-        ]
-    }
-    send_message(chat_id, text_msg, parse_mode="HTML", reply_to_message_id=False, reply_markup=kb)
+    send_message(chat_id, text_msg, parse_mode="HTML", reply_to_message_id=False,
+                 reply_markup=MAINTENANCE_SUBMENU_KEYBOARD)
 
 
 def _start_add_account_flow(chat_id, user_id, message_id):
@@ -2096,7 +2153,7 @@ def handle_callback_query(update):
 
 def handle_message(update):
     """Handle incoming message."""
-    global MAINTENANCE_MODE, PAYMENT_NAME
+    global MAINTENANCE_MODE, PAYMENT_NAME, CHANNEL_ID
     try:
         # Handle callback queries first
         if 'callback_query' in update:
@@ -2252,6 +2309,87 @@ def handle_message(update):
                 _key = _state.split(':', 1)[1]
                 if _handle_admin_settings_input(chat_id, user_id, message_id, _key, text):
                     return
+
+        # Admin: route reply-keyboard button presses from the settings menu / submenus
+        if is_admin(user_id) and text.strip() in ADMIN_BUTTON_LABELS:
+            btn = text.strip()
+
+            # ── Top-level settings menu actions ──
+            if btn == BTN_BACK_HOME:
+                send_message(chat_id, "🏠 ម៉ឺនុយដើម", reply_to_message_id=False,
+                             reply_markup=_main_kb(user_id))
+                return
+            if btn == BTN_BACK_SETTINGS:
+                send_admin_settings_menu(chat_id)
+                return
+
+            if btn == BTN_ADD_ACCOUNT:
+                _start_add_account_flow(chat_id, user_id, message_id)
+                return
+            if btn == BTN_DELETE_TYPE:
+                _show_delete_type_menu_inline(chat_id)
+                return
+            if btn == BTN_USERS:
+                _show_users_list_inline(chat_id)
+                return
+            if btn == BTN_BUYERS:
+                _export_buyers_report_inline(chat_id)
+                return
+            if btn == BTN_PAYMENT:
+                _show_payment_inline(chat_id)
+                return
+            if btn == BTN_BAKONG:
+                _show_bakong_inline(chat_id)
+                return
+            if btn == BTN_CHANNEL:
+                _show_channel_inline(chat_id)
+                return
+            if btn == BTN_ADMINS:
+                _show_admins_inline(chat_id)
+                return
+            if btn == BTN_MAINTENANCE:
+                _show_maintenance_inline(chat_id)
+                return
+
+            # ── Submenu leaf actions ──
+            if btn == BTN_PAYMENT_EDIT:
+                _prompt_admin_input(chat_id, user_id, 'payment',
+                    "💳 សូមផ្ញើ <b>ឈ្មោះ Payment</b> ថ្មី (1–60 តួអក្សរ)៖")
+                return
+            if btn == BTN_BAKONG_EDIT:
+                _prompt_admin_input(chat_id, user_id, 'bakong',
+                    "🔑 សូមផ្ញើ <b>Bakong Token</b> ថ្មី៖")
+                return
+            if btn == BTN_CHANNEL_EDIT:
+                _prompt_admin_input(chat_id, user_id, 'channel',
+                    "📢 សូមផ្ញើ <b>Channel ID</b> ថ្មី (លេខ ដូចជា <code>-1001234567890</code>)៖")
+                return
+            if btn == BTN_CHANNEL_CLEAR:
+                CHANNEL_ID = ""
+                set_setting('TELEGRAM_CHANNEL_ID', "")
+                send_message(chat_id, "✅ បានលុប Channel ID រួចរាល់", parse_mode="HTML",
+                             reply_to_message_id=False, reply_markup=ADMIN_SETTINGS_REPLY_KEYBOARD)
+                return
+            if btn == BTN_ADMIN_ADD:
+                _prompt_admin_input(chat_id, user_id, 'admin_add',
+                    "➕ សូមផ្ញើ <b>Telegram User ID</b> ដែលចង់បន្ថែមជា Admin៖")
+                return
+            if btn == BTN_ADMIN_REMOVE:
+                _prompt_admin_input(chat_id, user_id, 'admin_remove',
+                    "➖ សូមផ្ញើ <b>Telegram User ID</b> ដែលចង់ដក៖")
+                return
+            if btn == BTN_MAINT_ON:
+                MAINTENANCE_MODE = True
+                set_setting('MAINTENANCE_MODE', 'true')
+                send_message(chat_id, "🔴 បានបើក Maintenance Mode (ON)", parse_mode="HTML",
+                             reply_to_message_id=False, reply_markup=ADMIN_SETTINGS_REPLY_KEYBOARD)
+                return
+            if btn == BTN_MAINT_OFF:
+                MAINTENANCE_MODE = False
+                set_setting('MAINTENANCE_MODE', 'false')
+                send_message(chat_id, "🟢 បានបិទ Maintenance Mode (OFF)", parse_mode="HTML",
+                             reply_to_message_id=False, reply_markup=ADMIN_SETTINGS_REPLY_KEYBOARD)
+                return
 
         # Check if user is in a purchase session (for all users including admin)
         if user_id in user_sessions:
@@ -2488,7 +2626,6 @@ def handle_message(update):
             # used for purchase notifications. Stored in Neon DB so it persists
             # across restarts and replaces the TELEGRAM_CHANNEL_ID env var.
             if text.strip().startswith('/channel_id'):
-                global CHANNEL_ID
                 parts = text.strip().split(maxsplit=1)
                 if len(parts) < 2 or not parts[1].strip():
                     current = CHANNEL_ID if CHANNEL_ID else "(មិនទាន់កំណត់)"
