@@ -1442,7 +1442,7 @@ def _prompt_admin_input(chat_id, user_id, key, prompt_text):
 
 
 def _show_users_list_inline(chat_id):
-    """Show the known users list (same logic as the /users command)."""
+    """Export the known users list as a TXT file."""
     try:
         backfill_known_user_profiles()
     except Exception as e:
@@ -1456,14 +1456,18 @@ def _show_users_list_inline(chat_id):
     except Exception as e:
         logger.error(f"Failed to load known users: {e}")
         rows = []
+    back_keyboard = {
+        'keyboard': [[{'text': BTN_BACK_SETTINGS}, {'text': BTN_BACK_HOME}]],
+        'resize_keyboard': True,
+        'is_persistent': True,
+    }
     if not rows:
         send_message(chat_id, "📭 <b>មិនទាន់មានអ្នកប្រើប្រាស់ទេ។</b>",
-                     parse_mode="HTML", reply_to_message_id=False)
+                     parse_mode="HTML", reply_to_message_id=False,
+                     reply_markup=back_keyboard)
         return
     total = len(rows)
-    header = f"👥 <b>អ្នកប្រើប្រាស់សរុប: {total}</b>\n\n"
-    chunks = []
-    current = header
+    lines = [f"👥 អ្នកប្រើប្រាស់សរុប: {total}", ""]
     for i, row in enumerate(rows, 1):
         first = row.get('first_name') or ''
         last = row.get('last_name') or ''
@@ -1471,27 +1475,30 @@ def _show_users_list_inline(chat_id):
         uname = row.get('username') or ''
         uname_str = f"@{uname}" if uname else '—'
         uid = row.get('user_id')
-        line = (
-            f"<b>{i}.</b> {html.escape(full_name)}\n"
-            f"   🔖 {html.escape(uname_str)}\n"
-            f"   🪪 <code>{uid}</code>\n\n"
-        )
-        if len(current) + len(line) > 3800:
-            chunks.append(current)
-            current = ""
-        current += line
-    if current:
-        chunks.append(current)
-    back_keyboard = {
-        'keyboard': [[{'text': BTN_BACK_SETTINGS}, {'text': BTN_BACK_HOME}]],
-        'resize_keyboard': True,
-        'is_persistent': True,
-    }
-    last_idx = len(chunks) - 1
-    for i, chunk in enumerate(chunks):
-        rm = back_keyboard if i == last_idx else None
-        send_message(chat_id, chunk, parse_mode="HTML", reply_to_message_id=False,
-                     reply_markup=rm)
+        lines.append(f"{i}. {full_name}")
+        lines.append(f"   🔖 {uname_str}")
+        lines.append(f"   🪪 {uid}")
+        lines.append("")
+    txt = "\n".join(lines).encode('utf-8')
+    import datetime as _dt
+    filename = f"users_{_dt.datetime.now(_dt.timezone.utc).strftime('%Y%m%d_%H%M%S')}.txt"
+    files = {'document': (filename, txt, 'text/plain; charset=utf-8')}
+    data = {'chat_id': chat_id, 'caption': f"👥 បញ្ជីអ្នកប្រើប្រាស់ — {total} នាក់"}
+    try:
+        resp = http.post(f"{API_URL}/sendDocument", data=data, files=files, timeout=30)
+        if resp.status_code >= 400 or not resp.json().get('ok'):
+            logger.error(f"sendDocument users failed: {resp.text}")
+            send_message(chat_id, "❌ បរាជ័យក្នុងការផ្ញើ​ឯកសារ", reply_to_message_id=False,
+                         reply_markup=back_keyboard)
+            return
+    except Exception as e:
+        logger.error(f"users export failed: {e}")
+        send_message(chat_id, f"❌ Error: <code>{html.escape(str(e))}</code>",
+                     parse_mode="HTML", reply_to_message_id=False,
+                     reply_markup=back_keyboard)
+        return
+    send_message(chat_id, "↩️ ជ្រើសរើសខាងក្រោម៖", reply_to_message_id=False,
+                 reply_markup=back_keyboard)
 
 
 def _show_delete_type_menu_inline(chat_id, user_id=None):
