@@ -1421,7 +1421,7 @@ def _prompt_admin_input(chat_id, user_id, key, prompt_text):
     save_sessions_async()
     send_message(
         chat_id,
-        prompt_text + "\n\n<i>ផ្ញើ /cancel ឬ ចុច 🚫 បោះបង់ ដើម្បីបោះបង់</i>",
+        prompt_text + "\n\n<i>ចុច 🚫 បោះបង់ ឬ 🏠 ត្រឡប់ទៅម៉ឺនុយដើម ដើម្បីបោះបង់</i>",
         parse_mode="HTML",
         reply_to_message_id=False,
         reply_markup=CANCEL_INPUT_KEYBOARD
@@ -1630,8 +1630,8 @@ def _handle_admin_settings_input(chat_id, user_id, message_id, key, text):
     global PAYMENT_NAME, BAKONG_TOKEN, khqr_client, CHANNEL_ID, EXTRA_ADMIN_IDS
 
     raw = (text or '').strip()
-    cancel_words = {'/cancel', 'cancel', 'បោះបង់', '🚫 បោះបង់'}
-    if raw in cancel_words or raw.lower() == '/cancel':
+    cancel_words = {'បោះបង់', '🚫 បោះបង់'}
+    if raw in cancel_words:
         with _data_lock:
             if user_id in user_sessions:
                 del user_sessions[user_id]
@@ -1659,7 +1659,7 @@ def _handle_admin_settings_input(chat_id, user_id, message_id, key, text):
 
     if key == 'payment':
         if not raw:
-            send_message(chat_id, "សូមផ្ញើឈ្មោះ Payment ថ្មី (ឬ /cancel)", reply_to_message_id=False)
+            send_message(chat_id, "សូមផ្ញើឈ្មោះ Payment ថ្មី (ឬចុច 🚫 បោះបង់)", reply_to_message_id=False)
             return True
         PAYMENT_NAME = raw
         set_setting('PAYMENT_NAME', PAYMENT_NAME)
@@ -1673,7 +1673,7 @@ def _handle_admin_settings_input(chat_id, user_id, message_id, key, text):
 
     if key == 'bakong':
         if not raw:
-            send_message(chat_id, "សូមផ្ញើ Bakong token ថ្មី (ឬ /cancel)", reply_to_message_id=False)
+            send_message(chat_id, "សូមផ្ញើ Bakong token ថ្មី (ឬចុច 🚫 បោះបង់)", reply_to_message_id=False)
             return True
         try:
             new_client = KHQR(raw)
@@ -1729,7 +1729,7 @@ def _handle_admin_settings_input(chat_id, user_id, message_id, key, text):
         try:
             target_id = int(raw)
         except ValueError:
-            send_message(chat_id, "❌ user_id ត្រូវតែជាលេខ (ឬ /cancel)", reply_to_message_id=False)
+            send_message(chat_id, "❌ user_id ត្រូវតែជាលេខ (ឬចុច 🚫 បោះបង់)", reply_to_message_id=False)
             return True
         if target_id == ADMIN_ID:
             send_message(chat_id, "ℹ️ Admin បឋមមិនអាចលុប/បន្ថែមបានទេ។", reply_to_message_id=False, reply_markup=_main_kb(user_id))
