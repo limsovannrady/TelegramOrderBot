@@ -1274,8 +1274,7 @@ def show_account_selection(chat_id):
 MAIN_REPLY_KEYBOARD = {
     'keyboard': [
         [{'text': '💵 ទិញគូប៉ុង'}],
-        [{'text': '👤គណនី'}, {'text': '🧾ប្រវត្តិទិញ'}],
-        [{'text': '⚙️កំណត់'}]
+        [{'text': '👤គណនី'}, {'text': '🧾ប្រវត្តិទិញ'}]
     ],
     'resize_keyboard': True,
     'is_persistent': True
