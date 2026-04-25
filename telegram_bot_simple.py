@@ -1262,7 +1262,7 @@ def show_account_selection(chat_id):
     reply_keyboard = {
         'keyboard': buttons,
         'resize_keyboard': True,
-        'persistent': True,
+        'is_persistent': True,
     }
     send_message(chat_id, "<b>សូមជ្រើសរើស Account ដើម្បីទិញ៖</b>",
                  reply_to_message_id=False, reply_markup=reply_keyboard, parse_mode="HTML")
@@ -1274,7 +1274,7 @@ MAIN_REPLY_KEYBOARD = {
         [{'text': '👤គណនី'}, {'text': '🧾ប្រវត្តិទិញ'}]
     ],
     'resize_keyboard': True,
-    'persistent': True
+    'is_persistent': True
 }
 
 ADMIN_REPLY_KEYBOARD = {
@@ -1284,7 +1284,7 @@ ADMIN_REPLY_KEYBOARD = {
         [{'text': '⚙️កំណត់'}]
     ],
     'resize_keyboard': True,
-    'persistent': True
+    'is_persistent': True
 }
 
 ADMIN_SETTINGS_BTN = '⚙️កំណត់'
@@ -1326,7 +1326,7 @@ ADMIN_SETTINGS_REPLY_KEYBOARD = {
         [{'text': BTN_BACK_HOME}],
     ],
     'resize_keyboard': True,
-    'persistent': True
+    'is_persistent': True
 }
 
 PAYMENT_SUBMENU_KEYBOARD = {
@@ -1335,7 +1335,7 @@ PAYMENT_SUBMENU_KEYBOARD = {
         [{'text': BTN_BACK_SETTINGS}],
     ],
     'resize_keyboard': True,
-    'persistent': True
+    'is_persistent': True
 }
 
 BAKONG_SUBMENU_KEYBOARD = {
@@ -1344,7 +1344,7 @@ BAKONG_SUBMENU_KEYBOARD = {
         [{'text': BTN_BACK_SETTINGS}],
     ],
     'resize_keyboard': True,
-    'persistent': True
+    'is_persistent': True
 }
 
 CHANNEL_SUBMENU_KEYBOARD = {
@@ -1353,7 +1353,7 @@ CHANNEL_SUBMENU_KEYBOARD = {
         [{'text': BTN_BACK_SETTINGS}],
     ],
     'resize_keyboard': True,
-    'persistent': True
+    'is_persistent': True
 }
 
 ADMINS_SUBMENU_KEYBOARD = {
@@ -1362,7 +1362,7 @@ ADMINS_SUBMENU_KEYBOARD = {
         [{'text': BTN_BACK_SETTINGS}],
     ],
     'resize_keyboard': True,
-    'persistent': True
+    'is_persistent': True
 }
 
 MAINTENANCE_SUBMENU_KEYBOARD = {
@@ -1371,14 +1371,14 @@ MAINTENANCE_SUBMENU_KEYBOARD = {
         [{'text': BTN_BACK_SETTINGS}],
     ],
     'resize_keyboard': True,
-    'persistent': True
+    'is_persistent': True
 }
 
 CANCEL_INPUT_KEYBOARD = {
     'keyboard': [[{'text': BTN_CANCEL_INPUT}]],
     'resize_keyboard': True,
     'one_time_keyboard': False,
-    'persistent': True
+    'is_persistent': True
 }
 
 # Set of submenu/leaf button labels admins can press; used to keep them out of the
