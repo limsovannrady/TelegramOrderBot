@@ -1332,7 +1332,7 @@ ADMIN_SETTINGS_REPLY_KEYBOARD = {
 PAYMENT_SUBMENU_KEYBOARD = {
     'keyboard': [
         [{'text': BTN_PAYMENT_EDIT}],
-        [{'text': BTN_BACK_SETTINGS}],
+        [{'text': BTN_BACK_SETTINGS}, {'text': BTN_BACK_HOME}],
     ],
     'resize_keyboard': True,
     'is_persistent': True
@@ -1341,7 +1341,7 @@ PAYMENT_SUBMENU_KEYBOARD = {
 BAKONG_SUBMENU_KEYBOARD = {
     'keyboard': [
         [{'text': BTN_BAKONG_EDIT}],
-        [{'text': BTN_BACK_SETTINGS}],
+        [{'text': BTN_BACK_SETTINGS}, {'text': BTN_BACK_HOME}],
     ],
     'resize_keyboard': True,
     'is_persistent': True
@@ -1350,7 +1350,7 @@ BAKONG_SUBMENU_KEYBOARD = {
 CHANNEL_SUBMENU_KEYBOARD = {
     'keyboard': [
         [{'text': BTN_CHANNEL_EDIT}, {'text': BTN_CHANNEL_CLEAR}],
-        [{'text': BTN_BACK_SETTINGS}],
+        [{'text': BTN_BACK_SETTINGS}, {'text': BTN_BACK_HOME}],
     ],
     'resize_keyboard': True,
     'is_persistent': True
@@ -1359,7 +1359,7 @@ CHANNEL_SUBMENU_KEYBOARD = {
 ADMINS_SUBMENU_KEYBOARD = {
     'keyboard': [
         [{'text': BTN_ADMIN_ADD}, {'text': BTN_ADMIN_REMOVE}],
-        [{'text': BTN_BACK_SETTINGS}],
+        [{'text': BTN_BACK_SETTINGS}, {'text': BTN_BACK_HOME}],
     ],
     'resize_keyboard': True,
     'is_persistent': True
@@ -1368,14 +1368,17 @@ ADMINS_SUBMENU_KEYBOARD = {
 MAINTENANCE_SUBMENU_KEYBOARD = {
     'keyboard': [
         [{'text': BTN_MAINT_ON}, {'text': BTN_MAINT_OFF}],
-        [{'text': BTN_BACK_SETTINGS}],
+        [{'text': BTN_BACK_SETTINGS}, {'text': BTN_BACK_HOME}],
     ],
     'resize_keyboard': True,
     'is_persistent': True
 }
 
 CANCEL_INPUT_KEYBOARD = {
-    'keyboard': [[{'text': BTN_CANCEL_INPUT}]],
+    'keyboard': [
+        [{'text': BTN_CANCEL_INPUT}],
+        [{'text': BTN_BACK_HOME}],
+    ],
     'resize_keyboard': True,
     'one_time_keyboard': False,
     'is_persistent': True
@@ -1634,6 +1637,24 @@ def _handle_admin_settings_input(chat_id, user_id, message_id, key, text):
                 del user_sessions[user_id]
         save_sessions_async()
         send_message(chat_id, "🚫 បានបោះបង់ការកំណត់", reply_to_message_id=False, reply_markup=_main_kb(user_id))
+        return True
+
+    # 🏠 button: cancel input and return to main menu
+    if raw == BTN_BACK_HOME:
+        with _data_lock:
+            if user_id in user_sessions:
+                del user_sessions[user_id]
+        save_sessions_async()
+        send_message(chat_id, "🏠 ម៉ឺនុយដើម", reply_to_message_id=False, reply_markup=_main_kb(user_id))
+        return True
+
+    # ↩️ Back-to-settings button: cancel input and return to settings menu
+    if raw == BTN_BACK_SETTINGS:
+        with _data_lock:
+            if user_id in user_sessions:
+                del user_sessions[user_id]
+        save_sessions_async()
+        send_admin_settings_menu(chat_id)
         return True
 
     if key == 'payment':
