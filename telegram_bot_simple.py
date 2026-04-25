@@ -1818,7 +1818,8 @@ def _purchase_notification_targets():
 
 def send_purchase_notification(message):
     for target in _purchase_notification_targets():
-        send_message(target, message, parse_mode="HTML", reply_to_message_id=False, reply_markup=False)
+        rm = ADMIN_REPLY_KEYBOARD if str(target) == str(ADMIN_ID) else "no_keyboard"
+        send_message(target, message, parse_mode="HTML", reply_to_message_id=False, reply_markup=rm)
 
 
 def handle_callback_query(update):
