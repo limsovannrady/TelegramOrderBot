@@ -1815,11 +1815,16 @@ def _handle_admin_settings_input(chat_id, user_id, message_id, key, text):
             send_message(chat_id, "សូមផ្ញើ​សារ​ដែល​ចង់​ផ្សាយ (ឬចុច 🚫 បោះបង់)",
                          reply_to_message_id=False)
             return True
+        # Plain-text messages are copied (no "Forwarded from" tag);
+        # media messages (photos, videos, files, etc.) are forwarded so the
+        # admin attribution is preserved.
+        is_text_only = bool(raw)
         with _data_lock:
             user_sessions[user_id] = {
                 'state': 'broadcast_confirm',
                 'broadcast_message_id': message_id,
                 'broadcast_chat_id': chat_id,
+                'broadcast_use_copy': is_text_only,
             }
         save_sessions_async()
         send_message(
@@ -1835,9 +1840,14 @@ def _handle_admin_settings_input(chat_id, user_id, message_id, key, text):
     return False
 
 
-def _run_broadcast(admin_chat_id, source_message_id):
-    """Copy the admin's original message to every known user, preserving its
-    original formatting (entities, photos, captions, etc.). Runs in background."""
+def _run_broadcast(admin_chat_id, source_message_id, use_copy=False):
+    """Send the admin's original message to every known user, preserving its
+    original formatting (entities, photos, captions, etc.).
+
+    When use_copy=True the bot uses copyMessage so recipients see a clean message
+    with no "Forwarded from" attribution (used for plain text broadcasts).
+    Otherwise it uses forwardMessage so the admin attribution is preserved
+    (used for media broadcasts). Runs in background."""
     try:
         try:
             r = _neon_query("SELECT user_id FROM bot_known_users")
@@ -1857,8 +1867,9 @@ def _run_broadcast(admin_chat_id, source_message_id):
             if not uid:
                 continue
             try:
+                api_method = 'copyMessage' if use_copy else 'forwardMessage'
                 resp = http.post(
-                    f"{API_URL}/forwardMessage",
+                    f"{API_URL}/{api_method}",
                     data={
                         'chat_id': uid,
                         'from_chat_id': admin_chat_id,
@@ -2553,6 +2564,7 @@ def handle_message(update):
                 if stripped == BTN_BROADCAST_CONFIRM:
                     bcast_msg_id = user_sessions[user_id].get('broadcast_message_id')
                     bcast_chat_id = user_sessions[user_id].get('broadcast_chat_id') or chat_id
+                    use_copy = bool(user_sessions[user_id].get('broadcast_use_copy'))
                     with _data_lock:
                         if user_id in user_sessions:
                             del user_sessions[user_id]
@@ -2564,7 +2576,7 @@ def handle_message(update):
                         return
                     send_message(chat_id, "📢 កំពុង​ផ្សាយ​សារ ... សូមរង់ចាំ",
                                  reply_to_message_id=False, reply_markup=ADMIN_SETTINGS_REPLY_KEYBOARD)
-                    background_pool.submit(_run_broadcast, bcast_chat_id, bcast_msg_id)
+                    background_pool.submit(_run_broadcast, bcast_chat_id, bcast_msg_id, use_copy)
                     return
                 if stripped == BTN_BROADCAST_CANCEL:
                     with _data_lock:
