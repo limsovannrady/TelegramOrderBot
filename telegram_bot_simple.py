@@ -1306,6 +1306,7 @@ BTN_BAKONG          = '🔑 Bakong Token'
 BTN_CHANNEL         = '📢 Channel ID'
 BTN_ADMINS          = '👑 គ្រប់គ្រង Admin'
 BTN_MAINTENANCE     = '🛠 Maintenance Mode'
+BTN_BROADCAST       = '📢 ផ្សាយព័ត៌មាន'
 BTN_BACK_HOME       = '🏠 ត្រឡប់ទៅម៉ឺនុយដើម'
 BTN_BACK_SETTINGS   = '↩️ ត្រឡប់ទៅកំណត់'
 
@@ -1327,6 +1328,7 @@ ADMIN_SETTINGS_REPLY_KEYBOARD = {
         [{'text': BTN_USERS}, {'text': BTN_BUYERS}],
         [{'text': BTN_PAYMENT}, {'text': BTN_BAKONG}],
         [{'text': BTN_CHANNEL}, {'text': BTN_ADMINS}],
+        [{'text': BTN_BROADCAST}],
         [{'text': BTN_MAINTENANCE}],
         [{'text': BTN_BACK_HOME}],
     ],
@@ -1401,7 +1403,7 @@ ADD_ACCOUNT_KEYBOARD = {
 # unrecognized-command fallback.
 ADMIN_BUTTON_LABELS = {
     BTN_ADD_ACCOUNT, BTN_DELETE_TYPE, BTN_USERS, BTN_BUYERS,
-    BTN_PAYMENT, BTN_BAKONG, BTN_CHANNEL, BTN_ADMINS, BTN_MAINTENANCE,
+    BTN_PAYMENT, BTN_BAKONG, BTN_CHANNEL, BTN_ADMINS, BTN_MAINTENANCE, BTN_BROADCAST,
     BTN_BACK_HOME, BTN_BACK_SETTINGS,
     BTN_PAYMENT_EDIT, BTN_BAKONG_EDIT,
     BTN_CHANNEL_EDIT, BTN_CHANNEL_CLEAR,
@@ -1797,7 +1799,88 @@ def _handle_admin_settings_input(chat_id, user_id, message_id, key, text):
         send_message(chat_id, msg, parse_mode="HTML", reply_to_message_id=False, reply_markup=_main_kb(user_id))
         return True
 
+    if key == 'broadcast':
+        if not raw:
+            send_message(chat_id, "សូមផ្ញើ​សារ​ដែល​ចង់​ផ្សាយ (ឬចុច 🚫 បោះបង់)",
+                         reply_to_message_id=False)
+            return True
+        with _data_lock:
+            if user_id in user_sessions:
+                del user_sessions[user_id]
+        save_sessions_async()
+        send_message(chat_id, "📢 កំពុង​ផ្សាយ​សារ ... សូមរង់ចាំ",
+                     reply_to_message_id=False, reply_markup=ADMIN_SETTINGS_REPLY_KEYBOARD)
+        background_pool.submit(_run_broadcast, chat_id, raw)
+        return True
+
     return False
+
+
+def _run_broadcast(admin_chat_id, message_text):
+    """Send the given text message to every known user. Runs in background."""
+    try:
+        try:
+            r = _neon_query("SELECT user_id FROM bot_known_users")
+            rows = r.get('rows', []) or []
+        except Exception as e:
+            logger.error(f"Broadcast: failed to load users: {e}")
+            send_message(admin_chat_id, f"❌ មិន​អាច​ផ្ទុក​បញ្ជី​អ្នក​ប្រើ​ប្រាស់​បាន: <code>{html.escape(str(e))}</code>",
+                         parse_mode="HTML", reply_to_message_id=False,
+                         reply_markup=ADMIN_SETTINGS_REPLY_KEYBOARD)
+            return
+        total = len(rows)
+        sent = 0
+        failed = 0
+        blocked = 0
+        for row in rows:
+            uid = row.get('user_id')
+            if not uid:
+                continue
+            try:
+                resp = http.post(
+                    f"{API_URL}/sendMessage",
+                    data={
+                        'chat_id': uid,
+                        'text': message_text,
+                        'parse_mode': 'HTML',
+                        'disable_web_page_preview': 'true',
+                    },
+                    timeout=15
+                )
+                if resp.status_code == 200 and resp.json().get('ok'):
+                    sent += 1
+                else:
+                    body = resp.json() if resp.headers.get('content-type', '').startswith('application/json') else {}
+                    desc = (body or {}).get('description', '')
+                    if 'blocked' in desc.lower() or 'deactivated' in desc.lower() or 'chat not found' in desc.lower():
+                        blocked += 1
+                    else:
+                        failed += 1
+                        logger.warning(f"Broadcast to {uid} failed: {resp.status_code} {desc}")
+            except Exception as e:
+                failed += 1
+                logger.warning(f"Broadcast to {uid} error: {e}")
+            # Telegram limit ~30 msg/sec; sleep to stay safely under
+            time.sleep(0.05)
+        summary = (
+            "📢 <b>ផ្សាយ​សារ​បាន​ចប់</b>\n"
+            f"━━━━━━━━━━━━━━━━━━━\n"
+            f"👥 សរុប:         {total}\n"
+            f"✅ ផ្ញើ​ជោគជ័យ:   {sent}\n"
+            f"⛔ បាន​ប្លុក/លុប:  {blocked}\n"
+            f"❌ បរាជ័យ:        {failed}"
+        )
+        send_message(admin_chat_id, summary, parse_mode="HTML",
+                     reply_to_message_id=False,
+                     reply_markup=ADMIN_SETTINGS_REPLY_KEYBOARD)
+    except Exception as e:
+        logger.error(f"Broadcast crashed: {e}")
+        try:
+            send_message(admin_chat_id, f"❌ Broadcast error: <code>{html.escape(str(e))}</code>",
+                         parse_mode="HTML", reply_to_message_id=False,
+                         reply_markup=ADMIN_SETTINGS_REPLY_KEYBOARD)
+        except Exception:
+            pass
 
 
 def _send_order_summary(chat_id, user_id, session):
@@ -2493,6 +2576,11 @@ def handle_message(update):
                 return
             if btn == BTN_MAINTENANCE:
                 _show_maintenance_inline(chat_id)
+                return
+            if btn == BTN_BROADCAST:
+                _prompt_admin_input(chat_id, user_id, 'broadcast',
+                    "📢 សូមផ្ញើ​សារ​ដែល​ចង់​ផ្សាយ​ទៅ​អ្នក​ប្រើ​ប្រាស់​ទាំង​អស់៖\n\n"
+                    "<i>(អាច​ប្រើ HTML formatting ដូច​ជា &lt;b&gt;, &lt;i&gt;, &lt;code&gt;)</i>")
                 return
 
             # ── Submenu leaf actions ──
