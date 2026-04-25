@@ -1594,9 +1594,9 @@ def _show_payment_inline(chat_id):
 
 
 def _show_bakong_inline(chat_id):
-    """Show masked bakong token with the bakong reply submenu."""
-    masked = (BAKONG_TOKEN[:10] + "…") if BAKONG_TOKEN else "(មិនទាន់កំណត់)"
-    text_msg = f"🔑 <b>Bakong Token បច្ចុប្បន្ន៖</b>\n<code>{html.escape(masked)}</code>"
+    """Show the full bakong token with the bakong reply submenu."""
+    full = BAKONG_TOKEN if BAKONG_TOKEN else "(មិនទាន់កំណត់)"
+    text_msg = f"🔑 <b>Bakong Token បច្ចុប្បន្ន៖</b>\n<code>{html.escape(full)}</code>"
     send_message(chat_id, text_msg, parse_mode="HTML", reply_to_message_id=False,
                  reply_markup=BAKONG_SUBMENU_KEYBOARD)
 
